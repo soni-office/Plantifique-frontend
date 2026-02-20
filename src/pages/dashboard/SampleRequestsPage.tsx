@@ -6,15 +6,14 @@ import { toast } from "../../hooks/useToast";
 export function SampleRequestsPage() {
   const [requests, setRequests] = useState<SampleApplication[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  const shopCipher = "YOUR_SHOP_CIPHER_HERE"; // you can also keep it in .env
+; // you can also keep it in .env
 
   useEffect(() => {
     const fetchRequests = async () => {
       setIsLoading(true);
       try {
         const res: SampleRequestResponse =
-          await sampleRequestsApi.getSampleRequests(shopCipher, 20);
+          await sampleRequestsApi.getSampleRequests(20);
 
         setRequests(res.data.sample_applications);
       } catch (err) {

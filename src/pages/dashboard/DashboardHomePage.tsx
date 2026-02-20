@@ -19,10 +19,7 @@ export function DashboardHomePage() {
           <div>
             <dt className="inline font-medium">Username:</dt> <dd className="inline">{user?.username ?? 'N/A'}</dd>
           </div>
-          <div>
-            <dt className="inline font-medium">TikTok Shop ID:</dt>{' '}
-            <dd className="inline">{user?.tiktokShopId ?? 'N/A'}</dd>
-          </div>
+          
         </dl>
       </div>
     </section>
