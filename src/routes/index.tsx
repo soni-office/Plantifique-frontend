@@ -5,7 +5,10 @@ import { LoginPage } from '../pages/auth/LoginPage';
 import { OAuthCallbackPage } from '../pages/auth/OAuthCallbackPage';
 import { DashboardHomePage } from '../pages/dashboard/DashboardHomePage';
 import { SampleRequestsPage } from '../pages/dashboard/SampleRequestsPage';
-import { AgentsPage } from '../pages/dashboard/AgentsPage';
+import { CreatorDetailsPage } from '../pages/dashboard/CreatorDetailsPage';
+import { ProductDetailsPage } from '../pages/dashboard/ProductDetailsPage';
+
+// import { AgentsPage } from '../pages/dashboard/AgentsPage';
 
 export function AppRouter() {
   return (
@@ -17,7 +20,9 @@ export function AppRouter() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHomePage />} />
           <Route path="sample-requests" element={<SampleRequestsPage />} />
-          <Route path="agents" element={<AgentsPage />} />
+          <Route path="creators/:username" element={<CreatorDetailsPage />} />
+          <Route path="products/:productId" element={<ProductDetailsPage />} />
+          {/* <Route path="agents" element={<AgentsPage />} /> */}
         </Route>
       </Route>
 

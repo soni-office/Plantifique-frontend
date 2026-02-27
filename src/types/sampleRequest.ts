@@ -21,6 +21,7 @@ export interface SampleApplication {
     username: string;
     nickname: string;
     follower_count: number;
+    avatar_url?: string;
   };
 
   product: {

@@ -4,11 +4,22 @@ import { useAuthStore } from '../store/authStore';
 
 export function ProtectedRoute() {
   const location = useLocation();
-  const { initialized, isLoading, isAuthenticated, initializeAuth } = useAuthStore();
+  const { initialized, isLoading, isAuthenticated, initializeAuth, setToken } = useAuthStore();
 
   useEffect(() => {
     void initializeAuth();
   }, [initializeAuth]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setToken(null);
+    };
+
+    window.addEventListener('app:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('app:unauthorized', handleUnauthorized);
+    };
+  }, [setToken]);
 
   if (!initialized || isLoading) {
     return (

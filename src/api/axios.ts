@@ -22,6 +22,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error?.response?.status === 401) {
       localStorage.removeItem('app_access_token');
+      window.dispatchEvent(new Event('app:unauthorized'));
     }
     return Promise.reject(error);
   },

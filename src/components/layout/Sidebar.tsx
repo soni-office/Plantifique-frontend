@@ -5,7 +5,7 @@ import { Button } from '../ui/button';
 const navItems = [
   { to: '/dashboard', label: 'Dashboard Home', end: true },
   { to: '/dashboard/sample-requests', label: 'Sample Requests' },
-  { to: '/dashboard/agents', label: 'Agents' },
+ 
 ];
 
 export function Sidebar() {
