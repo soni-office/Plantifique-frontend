@@ -15,12 +15,12 @@ export function OAuthCallbackPage() {
     const run = async () => {
       const params = new URLSearchParams(window.location.search);
       const code = params.get('code');
-      const state = params.get('state');
+      const state = params.get('state'); // May be null in TikTok Sandbox
 
-      if (!code || !state) {
+      if (!code) {
         toast({
           title: 'OAuth callback error',
-          description: 'Missing code or state.',
+          description: 'Missing authorization code.',
           variant: 'error',
         });
         navigate('/login', { replace: true });
@@ -28,7 +28,7 @@ export function OAuthCallbackPage() {
       }
 
       try {
-        await completeOAuthCallback(code, state);
+        await completeOAuthCallback(code, state ?? undefined);
         navigate('/dashboard', { replace: true });
       } catch {
         toast({

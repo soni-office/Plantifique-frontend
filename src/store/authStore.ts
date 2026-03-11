@@ -11,7 +11,7 @@ interface AuthState {
   setToken: (token: string | null) => void;
   initializeAuth: () => Promise<void>;
   loginWithTikTok: () => Promise<void>;
-  completeOAuthCallback: (code: string, state: string) => Promise<void>;
+  completeOAuthCallback: (code: string, state?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: Boolean(localStorage.getItem('app_access_token')),
   isLoading: false,
   initialized: false,
-  
+
   setToken: (token) => {
     if (token) {
       localStorage.setItem('app_access_token', token);
@@ -67,13 +67,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  completeOAuthCallback: async (code: string, state: string) => {
+  completeOAuthCallback: async (code: string, state?: string) => {
     set({ isLoading: true });
     try {
       const response = await authApi.exchangeSessionFromCallback(code, state);
-      localStorage.setItem('app_access_token', response.access_token);
+      localStorage.setItem('app_access_token', response.jwt_token);
       set({
-        token: response.access_token,
+        token: response.jwt_token,
         user: response.user,
         isAuthenticated: true,
         initialized: true,

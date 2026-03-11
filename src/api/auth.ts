@@ -16,10 +16,10 @@ export const authApi = {
     await apiClient.post('/auth/logout');
   },
 
-  async exchangeSessionFromCallback(code: string, state: string) {
+  async exchangeSessionFromCallback(code: string, state?: string) {
     const { data } = await apiClient.post<SessionResponse>('/auth/tiktokshop/exchange', {
       code,
-      state,
+      ...(state ? { state } : {}),
     });
     return data;
   },

@@ -18,6 +18,7 @@ export interface SampleApplication {
   fulfillment_status: string;
 
   creator: {
+    creator_open_id: string;
     username: string;
     nickname: string;
     follower_count: number;

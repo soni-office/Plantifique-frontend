@@ -10,7 +10,7 @@ export interface LoginResponse {
 }
 
 export interface SessionResponse {
-  access_token: string;
+  jwt_token: string;
   token_type: string;
   user: User;
 }

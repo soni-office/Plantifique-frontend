@@ -20,7 +20,7 @@ export function AppRouter() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHomePage />} />
           <Route path="sample-requests" element={<SampleRequestsPage />} />
-          <Route path="creators/:username" element={<CreatorDetailsPage />} />
+          <Route path="creators/:creatorOpenId" element={<CreatorDetailsPage />} />
           <Route path="products/:productId" element={<ProductDetailsPage />} />
           {/* <Route path="agents" element={<AgentsPage />} /> */}
         </Route>

@@ -53,9 +53,10 @@ export const sampleRequestsApi = {
   },
   async analyzeSample(sampleId: string) {
     const { data } = await apiClient.post(
-      `/agent/analyze/${sampleId}`
+      `/tiktok/samples/${sampleId}/evaluate`
     );
-    return data;
+    // The backend returns { status: "success", data: result }
+    return data.data;
   },
 
 };
