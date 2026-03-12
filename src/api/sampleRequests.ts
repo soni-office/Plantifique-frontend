@@ -59,4 +59,19 @@ export const sampleRequestsApi = {
     return data.data;
   },
 
+  async updateReviewStatus(sampleId: string, status: string) {
+    const { data } = await apiClient.patch(
+      `/tiktok/samples/${sampleId}/review-status`,
+      { status }
+    );
+    return data;
+  },
+
+  async submitFeedback(sampleId: string, rating: "up" | "down", comment = "") {
+    const { data } = await apiClient.post(
+      `/tiktok/samples/${sampleId}/feedback`,
+      { rating, comment }
+    );
+    return data;
+  },
 };
