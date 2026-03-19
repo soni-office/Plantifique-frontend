@@ -16,6 +16,11 @@ export const authApi = {
     await apiClient.post('/auth/logout');
   },
 
+  async loginWithEmail(email: string) {
+    const { data } = await apiClient.post<SessionResponse>('/auth/login', { email });
+    return data;
+  },
+
   async exchangeSessionFromCallback(code: string, state?: string) {
     const { data } = await apiClient.post<SessionResponse>('/auth/tiktokshop/exchange', {
       code,

@@ -11,6 +11,7 @@ interface AuthState {
   setToken: (token: string | null) => void;
   initializeAuth: () => Promise<void>;
   loginWithTikTok: () => Promise<void>;
+  loginWithEmail: (email: string) => Promise<void>;
   completeOAuthCallback: (code: string, state?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -38,30 +39,45 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: null, token: null, isAuthenticated: false, initialized: true, isLoading: false });
       return;
     }
-
     set({ isLoading: true });
     try {
       const user = await authApi.getCurrentUser();
       set({ user, token: existingToken, isAuthenticated: true, initialized: true });
     } catch {
       localStorage.removeItem('app_access_token');
-      set({
-        user: null,
-        isAuthenticated: false,
-        token: null,
-        initialized: true,
-      });
+      set({ user: null, isAuthenticated: false, token: null, initialized: true });
     } finally {
       set({ isLoading: false });
     }
   },
 
+  // ── Admin only: redirects to TikTok to link the shop ──
   loginWithTikTok: async () => {
     set({ isLoading: true });
     try {
       const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
       const loginPath = import.meta.env.VITE_TIKTOK_LOGIN_PATH ?? '/auth/tiktokshop/login';
       window.location.assign(`${backendUrl}${loginPath}`);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  // ── Team members: standard email login via POST /auth/login ──
+  loginWithEmail: async (email: string) => {
+    set({ isLoading: true });
+    try {
+      const response = await authApi.loginWithEmail(email);
+      localStorage.setItem('app_access_token', response.jwt_token);
+      set({
+        token: response.jwt_token,
+        user: response.user,
+        isAuthenticated: true,
+        initialized: true,
+      });
+    } catch (err) {
+      // Always unfreeze the UI, then re-throw so LoginPage can show toast
+      throw err;
     } finally {
       set({ isLoading: false });
     }
@@ -88,16 +104,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await authApi.logout();
     } catch {
-      // ignore logout API failures and clear local state
+      // ignore logout API failures
     } finally {
       localStorage.removeItem('app_access_token');
-      set({
-        token: null,
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        initialized: true,
-      });
+      set({ token: null, user: null, isAuthenticated: false, isLoading: false, initialized: true });
     }
   },
 }));
