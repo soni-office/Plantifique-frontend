@@ -13,6 +13,10 @@ export interface SampleApplication {
   review_status?: string;       // PENDING_REVIEW | APPROVED | REJECTED
   analysis_score?: number;
   analysis_reasoning?: string;
+  commerce_score?: number;
+  commerce_reasoning?: string;
+  aesthetic_score?: number;
+  aesthetic_reasoning?: string;
   decision_reason?: string;
   final_decision?: string;
   filters_passed?: boolean;

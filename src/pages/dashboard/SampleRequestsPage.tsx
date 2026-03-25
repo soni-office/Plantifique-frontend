@@ -313,10 +313,15 @@ export function SampleRequestsPage() {
                                   {analysis.tier}
                                 </span>
                               )}
-                              {analysis.analysis_score != null && (
-                                <span className="text-xs font-semibold text-slate-700">
-                                  {analysis.analysis_score}/100
-                                </span>
+                              {(analysis.commerce_score != null) && (
+                                <div className="flex flex-col gap-1 w-full mt-1">
+                                  <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                    commerce_score: {analysis.commerce_score}
+                                  </span>
+                                  <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                    aesthetic_score: {analysis.aesthetic_score}
+                                  </span>
+                                </div>
                               )}
                             </div>
                             <button
@@ -464,12 +469,19 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                     </span>
                   )}
                 </div>
-                {analysis.analysis_score != null && (
-                  <span className="text-sm font-bold text-slate-900">Score: {analysis.analysis_score}/100</span>
+                {analysis.commerce_score != null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                      commerce_score: {analysis.commerce_score}/100
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                      aesthetic_score: {analysis.aesthetic_score}/100
+                    </span>
+                  </div>
                 )}
               </div>
               <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                {analysis.decision_reason ?? analysis.analysis_reasoning ?? "No reasoning available."}
+                {analysis.decision_reason ?? analysis.commerce_reasoning ?? "No reasoning available."}
               </p>
             </div>
 
