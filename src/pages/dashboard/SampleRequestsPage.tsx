@@ -215,10 +215,15 @@ export function SampleRequestsPage() {
                                   {analysis.tier}
                                 </span>
                               )}
-                              {analysis.llm_score != null && (
-                                <span className="text-xs font-semibold text-slate-700">
-                                  {analysis.llm_score}/100
-                                </span>
+                              {analysis.profile_score != null && (
+                                <div className="flex flex-col gap-1 w-full mt-1">
+                                  <span className="text-[10px] font-mono tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                    profile_score: {analysis.profile_score}
+                                  </span>
+                                  <span className="text-[10px] font-mono tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                    aesthetic_score: {analysis.aesthetic_score}
+                                  </span>
+                                </div>
                               )}
                             </div>
 
@@ -376,10 +381,15 @@ function ReasoningModal({ analysis, onClose }: { analysis: any; onClose: () => v
                     </span>
                   )}
                 </div>
-                {analysis.llm_score != null && (
-                  <span className="text-sm font-bold text-slate-900">
-                    Score: {analysis.llm_score}/100
-                  </span>
+                {analysis.profile_score != null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                      profile_score: {analysis.profile_score}/100
+                    </span>
+                    <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                      aesthetic_score: {analysis.aesthetic_score}/100
+                    </span>
+                  </div>
                 )}
               </div>
               <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
