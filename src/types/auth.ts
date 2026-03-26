@@ -1,16 +1,12 @@
+export type UserRole = 'SUPER_ADMIN' | 'ORG_ADMIN' | 'ORG_MEMBER';
+
 export interface User {
-  id: string;
+  uid: string;        // Firebase UID — canonical identity
+  id?: string;        // backwards-compat alias (same value as uid)
   email?: string;
+  name?: string;
   username?: string;
+  role?: UserRole;
+  org_id?: string;
   tiktokShopId?: string;
-}
-
-export interface LoginResponse {
-  redirect_url?: string;
-}
-
-export interface SessionResponse {
-  jwt_token: string;
-  token_type: string;
-  user: User;
 }

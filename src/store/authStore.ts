@@ -1,103 +1,105 @@
 import { create } from 'zustand';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import { firebaseAuth } from '../lib/firebase';
 import { authApi } from '../api/auth';
 import type { User } from '../types/auth';
 
 interface AuthState {
   user: User | null;
-  token: string | null;
+  firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   initialized: boolean;
-  setToken: (token: string | null) => void;
-  initializeAuth: () => Promise<void>;
-  loginWithTikTok: () => Promise<void>;
-  completeOAuthCallback: (code: string, state?: string) => Promise<void>;
+  /** Subscribe to Firebase auth state — call once on app mount. */
+  initializeAuth: () => void;
+  loginWithEmail: (email: string, password: string) => Promise<void>;
+  /** Fetch TikTok OAuth URL and redirect the browser — org_admin/super_admin only. */
+  connectTikTok: () => Promise<void>;
   logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+// Module-level guard so the onAuthStateChanged listener is only registered once.
+let _subscribed = false;
+
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('app_access_token'),
-  isAuthenticated: Boolean(localStorage.getItem('app_access_token')),
+  firebaseUser: null,
+  isAuthenticated: false,
   isLoading: false,
   initialized: false,
 
-  setToken: (token) => {
-    if (token) {
-      localStorage.setItem('app_access_token', token);
-    } else {
-      localStorage.removeItem('app_access_token');
-    }
-    set({ token, isAuthenticated: Boolean(token) });
-  },
-
-  initializeAuth: async () => {
-    if (get().initialized) return;
-    const existingToken = localStorage.getItem('app_access_token');
-    if (!existingToken) {
-      set({ user: null, token: null, isAuthenticated: false, initialized: true, isLoading: false });
-      return;
-    }
+  initializeAuth: () => {
+    if (_subscribed) return;
+    _subscribed = true;
 
     set({ isLoading: true });
+
+    onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          // Fetch full profile (name, org_id, role) from backend
+          const user = await authApi.getCurrentUser();
+          set({ firebaseUser, user, isAuthenticated: true, initialized: true, isLoading: false });
+        } catch {
+          // Token valid but /auth/me failed — use minimal data from the Firebase token
+          set({
+            firebaseUser,
+            user: {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email ?? '',
+              role: 'ORG_MEMBER',
+              org_id: '',
+            },
+            isAuthenticated: true,
+            initialized: true,
+            isLoading: false,
+          });
+        }
+      } else {
+        set({
+          firebaseUser: null,
+          user: null,
+          isAuthenticated: false,
+          initialized: true,
+          isLoading: false,
+        });
+      }
+    });
+  },
+
+  loginWithEmail: async (email, password) => {
+    set({ isLoading: true });
     try {
-      const user = await authApi.getCurrentUser();
-      set({ user, token: existingToken, isAuthenticated: true, initialized: true });
-    } catch {
-      localStorage.removeItem('app_access_token');
-      set({
-        user: null,
-        isAuthenticated: false,
-        token: null,
-        initialized: true,
-      });
-    } finally {
+      await signInWithEmailAndPassword(firebaseAuth, email, password);
+      // onAuthStateChanged fires automatically and resolves the rest of the state
+    } catch (err) {
       set({ isLoading: false });
+      throw err;
     }
   },
 
-  loginWithTikTok: async () => {
+  connectTikTok: async () => {
     set({ isLoading: true });
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
-      const loginPath = import.meta.env.VITE_TIKTOK_LOGIN_PATH ?? '/auth/tiktokshop/login';
-      window.location.assign(`${backendUrl}${loginPath}`);
-    } finally {
+      const authUrl = await authApi.getTikTokConnectUrl();
+      window.location.href = authUrl;
+    } catch (err) {
       set({ isLoading: false });
-    }
-  },
-
-  completeOAuthCallback: async (code: string, state?: string) => {
-    set({ isLoading: true });
-    try {
-      const response = await authApi.exchangeSessionFromCallback(code, state);
-      localStorage.setItem('app_access_token', response.jwt_token);
-      set({
-        token: response.jwt_token,
-        user: response.user,
-        isAuthenticated: true,
-        initialized: true,
-      });
-    } finally {
-      set({ isLoading: false });
+      throw err;
     }
   },
 
   logout: async () => {
     set({ isLoading: true });
     try {
-      await authApi.logout();
-    } catch {
-      // ignore logout API failures and clear local state
+      await signOut(firebaseAuth);
     } finally {
-      localStorage.removeItem('app_access_token');
-      set({
-        token: null,
-        user: null,
-        isAuthenticated: false,
-        isLoading: false,
-        initialized: true,
-      });
+      set({ user: null, firebaseUser: null, isAuthenticated: false, isLoading: false });
     }
   },
 }));

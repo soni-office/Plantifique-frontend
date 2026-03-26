@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 
 export function ProtectedRoute() {
   const location = useLocation();
-  const { initialized, isLoading, isAuthenticated, initializeAuth, setToken } = useAuthStore();
+  const { initialized, isLoading, isAuthenticated, initializeAuth, logout } = useAuthStore();
 
   useEffect(() => {
     void initializeAuth();
@@ -12,14 +12,14 @@ export function ProtectedRoute() {
 
   useEffect(() => {
     const handleUnauthorized = () => {
-      setToken(null);
+      void logout();
     };
 
     window.addEventListener('app:unauthorized', handleUnauthorized);
     return () => {
       window.removeEventListener('app:unauthorized', handleUnauthorized);
     };
-  }, [setToken]);
+  }, [logout]);
 
   if (!initialized || isLoading) {
     return (

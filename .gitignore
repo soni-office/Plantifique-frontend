@@ -3,6 +3,7 @@
 
 # production build
 /dist
+.firebase
 
 # vite cache
 node_modules/.vite
