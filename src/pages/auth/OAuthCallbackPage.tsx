@@ -1,51 +1,45 @@
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
 import { toast } from '../../hooks/useToast';
 
+/**
+ * Handles the post-TikTok-OAuth redirect from the backend.
+ *
+ * New flow: backend exchanges the code server-side and redirects here with
+ * ?tiktok_connected=true on success, or ?error=<msg> on failure.
+ */
 export function OAuthCallbackPage() {
   const navigate = useNavigate();
-  const { completeOAuthCallback } = useAuthStore();
-  const hasStartedRef = useRef(false);
+  const hasRunRef = useRef(false);
 
   useEffect(() => {
-    if (hasStartedRef.current) return;
-    hasStartedRef.current = true;
+    if (hasRunRef.current) return;
+    hasRunRef.current = true;
 
-    const run = async () => {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
-      const state = params.get('state'); // May be null in TikTok Sandbox
+    const params = new URLSearchParams(window.location.search);
 
-      if (!code) {
-        toast({
-          title: 'OAuth callback error',
-          description: 'Missing authorization code.',
-          variant: 'error',
-        });
-        navigate('/login', { replace: true });
-        return;
-      }
+    if (params.get('tiktok_connected') === 'true') {
+      toast({
+        title: 'TikTok Shop connected',
+        description: 'Your shop is now linked to this org.',
+        variant: 'success',
+      });
+      navigate('/dashboard', { replace: true });
+      return;
+    }
 
-      try {
-        await completeOAuthCallback(code, state ?? undefined);
-        navigate('/dashboard', { replace: true });
-      } catch {
-        toast({
-          title: 'Authentication failed',
-          description: 'Could not complete TikTok OAuth exchange.',
-          variant: 'error',
-        });
-        navigate('/login', { replace: true });
-      }
-    };
-
-    void run();
-  }, [completeOAuthCallback, navigate]);
+    const error = params.get('error');
+    toast({
+      title: 'TikTok connection failed',
+      description: error ?? 'Unexpected callback. Please try again.',
+      variant: 'error',
+    });
+    navigate('/dashboard', { replace: true });
+  }, [navigate]);
 
   return (
     <div className="flex min-h-screen items-center justify-center text-sm text-slate-600">
-      Finalizing TikTok authorization...
+      Finalizing TikTok authorization…
     </div>
   );
 }
