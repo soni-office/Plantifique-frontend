@@ -321,8 +321,34 @@ export function SampleRequestsPage() {
                                   <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
                                     aesthetic_score: {analysis.aesthetic_score}
                                   </span>
+                                  {analysis.visual_score != null && (
+                                    <span className="text-[10px] font-mono tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                      visual_score: {analysis.visual_score}
+                                    </span>
+                                  )}
                                 </div>
                               )}
+                            </div>
+                            
+                            {/* Stage indicators */}
+                            <div className="flex flex-col text-[11px] text-slate-500 font-medium">
+                              <div className="flex justify-between border-b border-slate-50 pb-0.5">
+                                <span>Filters:</span>
+                                <span className={
+                                  analysis.filters_passed === true ? "text-emerald-600" :
+                                  analysis.filters_passed === false ? "text-rose-600" :
+                                  "text-slate-400"
+                                }>
+                                  {analysis.filters_passed === true ? "PASSED" :
+                                   analysis.filters_passed === false ? "FAILED" : "N/A"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between pt-0.5">
+                                <span>AI Scoring:</span>
+                                <span className={analysis.compatibility_status === "PROCESSED" ? "text-blue-600" : "text-slate-400"}>
+                                  {analysis.compatibility_status === "PROCESSED" ? "DONE" : "N/A"}
+                                </span>
+                              </div>
                             </div>
                             <button
                               onClick={() => setSelectedAnalysis(analysis)}
@@ -330,7 +356,8 @@ export function SampleRequestsPage() {
                             >
                               See reasoning →
                             </button>
-
+                            
+                            {/* AI Feedback */}
                             {fb && (
                               fb.submitted ? (
                                 <p className="text-[11px] text-emerald-600 font-semibold">
@@ -477,12 +504,51 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                     <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
                       aesthetic_score: {analysis.aesthetic_score}/100
                     </span>
+                    {analysis.visual_score != null && (
+                      <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                        visual_score: {analysis.visual_score}/100
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
-              <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                {analysis.decision_reason ?? analysis.commerce_reasoning ?? "No reasoning available."}
-              </p>
+              <div className="space-y-4">
+                {analysis.commerce_reasoning && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Commerce / Profile Phase</h4>
+                    <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                      {analysis.commerce_reasoning}
+                    </p>
+                  </div>
+                )}
+                
+                {analysis.aesthetic_reasoning && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Aesthetic Phase</h4>
+                    <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                      {analysis.aesthetic_reasoning}
+                    </p>
+                  </div>
+                )}
+
+                {analysis.visual_reasoning && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Deep Visual Phase</h4>
+                    <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                      {analysis.visual_reasoning}
+                    </p>
+                  </div>
+                )}
+
+                {(analysis.decision_reason && analysis.decision_reason !== "No reasoning provided.") && (
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Evidence Summary</h4>
+                    <p className="text-slate-700 text-[13px] leading-relaxed whitespace-pre-wrap bg-white/50 border border-slate-200 p-3 rounded mt-2">
+                      {analysis.decision_reason}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
             {detail && Object.keys(detail).length > 0 && (
@@ -520,6 +586,29 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                       <span className="text-blue-700 font-bold">{detail.gmv_range?.formatted_range || "N/A"}</span>
                     </div>
                   </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Top Categories */}
+            {analysis.rich_creator_detail?.top_categories && analysis.rich_creator_detail.top_categories.length > 0 && (
+              <div className="bg-white border border-slate-100 rounded-xl p-5 shadow-sm">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Top GMV Categories</h4>
+                <div className="grid grid-cols-1 gap-3">
+                  {analysis.rich_creator_detail.top_categories.slice(0, 3).map((cat: any) => (
+                    <div key={cat.key} className="space-y-1">
+                      <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
+                        <span>{cat.key}</span>
+                        <span>{(parseFloat(cat.value) * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-indigo-500"
+                          style={{ width: `${parseFloat(cat.value) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

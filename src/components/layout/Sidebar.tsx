@@ -5,7 +5,8 @@ import { Button } from '../ui/button';
 const navItems = [
   { to: '/dashboard', label: 'Dashboard Home', end: true, adminOnly: false },
   { to: '/dashboard/sample-requests', label: 'Sample Requests', adminOnly: false },
-  { to: '/dashboard/tier-config', label: 'Tier Config', adminOnly: true },
+  { to: '/dashboard/tier-config', label: 'Tier Config', adminOnly: true }, 
+  { to: '/dashboard/testing', label: 'Testing', adminOnly: true },
 ];
 
 export function Sidebar() {
