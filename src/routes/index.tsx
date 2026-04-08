@@ -5,6 +5,7 @@ import { LoginPage } from '../pages/auth/LoginPage';
 import { OAuthCallbackPage } from '../pages/auth/OAuthCallbackPage';
 import { DashboardHomePage } from '../pages/dashboard/DashboardHomePage';
 import { SampleRequestsPage } from '../pages/dashboard/SampleRequestsPage';
+import { TierConfigPage } from '../pages/dashboard/TierConfigPage';
 import { CreatorDetailsPage } from '../pages/dashboard/CreatorDetailsPage';
 import { ProductDetailsPage } from '../pages/dashboard/ProductDetailsPage';
 
@@ -20,6 +21,7 @@ export function AppRouter() {
         <Route path="/dashboard" element={<DashboardLayout />}>
           <Route index element={<DashboardHomePage />} />
           <Route path="sample-requests" element={<SampleRequestsPage />} />
+          <Route path="tier-config" element={<TierConfigPage />} />
           <Route path="creators/:creatorOpenId" element={<CreatorDetailsPage />} />
           <Route path="products/:productId" element={<ProductDetailsPage />} />
           {/* <Route path="agents" element={<AgentsPage />} /> */}

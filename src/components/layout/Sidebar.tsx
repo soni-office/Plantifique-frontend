@@ -3,14 +3,15 @@ import { useAuthStore } from '../../store/authStore';
 import { Button } from '../ui/button';
 
 const navItems = [
-  { to: '/dashboard', label: 'Dashboard Home', end: true },
-  { to: '/dashboard/sample-requests', label: 'Sample Requests' },
- 
+  { to: '/dashboard', label: 'Dashboard Home', end: true, adminOnly: false },
+  { to: '/dashboard/sample-requests', label: 'Sample Requests', adminOnly: false },
+  { to: '/dashboard/tier-config', label: 'Tier Config', adminOnly: true },
 ];
 
 export function Sidebar() {
   const navigate = useNavigate();
-  const { logout, isLoading } = useAuthStore();
+  const { logout, isLoading, user } = useAuthStore();
+  const isAdmin = user?.role === 'ORG_ADMIN' || user?.role === 'SUPER_ADMIN';
   const handleLogout = async () => {
     await logout();
     navigate('/login', { replace: true });
@@ -21,7 +22,7 @@ export function Sidebar() {
       <h1 className="mb-8 text-xl font-bold text-black">Plantifique</h1>
 
       <nav className="flex flex-1 flex-col gap-2">
-        {navItems.map((item) => (
+        {navItems.filter((item) => !item.adminOnly || isAdmin).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
