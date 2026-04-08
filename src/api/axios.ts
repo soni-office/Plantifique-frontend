@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { firebaseAuth } from '../lib/firebase';
+import { useAuthStore } from '../store/authStore';
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000';
 
@@ -9,13 +10,19 @@ export const apiClient = axios.create({
 });
 
 // Attach a fresh Firebase ID token on every request.
-// getIdToken() auto-refreshes the token when within 5 minutes of expiry — no manual refresh needed.
+// If the SUPER_ADMIN has selected an active org, also attach X-Active-Org.
 apiClient.interceptors.request.use(async (config) => {
-  const user = firebaseAuth.currentUser;
-  if (user) {
-    const token = await user.getIdToken();
+  const firebaseUser = firebaseAuth.currentUser;
+  if (firebaseUser) {
+    const token = await firebaseUser.getIdToken();
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  const { activeOrgId } = useAuthStore.getState();
+  if (activeOrgId) {
+    config.headers['X-Active-Org'] = activeOrgId;
+  }
+
   return config;
 });
 

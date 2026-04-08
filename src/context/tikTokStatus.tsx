@@ -19,17 +19,15 @@ export function useTikTokStatus() {
 }
 
 export function TikTokStatusProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated, user } = useAuthStore();
-  const orgId = user?.org_id ?? null;
+  const { isAuthenticated, user, activeOrgId } = useAuthStore();
+  // Use activeOrgId when set (SUPER_ADMIN org-switch), else fall back to token's org_id
+  const orgId = activeOrgId ?? user?.org_id ?? null;
 
   const [connected, setConnected] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchStatus = useCallback(() => {
     // Only fetch once we have an authenticated user with a known org_id.
-    // Without this guard the request fires before the Firebase token is
-    // attached to the axios interceptor, returns 401, and we incorrectly
-    // mark the shop as disconnected.
     if (!isAuthenticated || !orgId) {
       setConnected(null);
       setLoading(false);
@@ -44,7 +42,7 @@ export function TikTokStatusProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, [isAuthenticated, orgId]);
 
-  // Re-run whenever auth state or org changes (covers login, org switch, refresh).
+  // Re-run whenever auth state, org, or active org switch changes.
   useEffect(() => {
     fetchStatus();
   }, [fetchStatus]);

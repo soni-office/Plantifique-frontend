@@ -15,12 +15,20 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   initialized: boolean;
+  /**
+   * For SUPER_ADMIN: the org they are currently operating as.
+   * When set, all API calls will carry X-Active-Org so the backend
+   * scopes all data to this org instead of the admin's own org_id claim.
+   */
+  activeOrgId: string | null;
   /** Subscribe to Firebase auth state — call once on app mount. */
   initializeAuth: () => void;
   loginWithEmail: (email: string, password: string) => Promise<void>;
   /** Fetch TikTok OAuth URL and redirect the browser — org_admin/super_admin only. */
   connectTikTok: () => Promise<void>;
   logout: () => Promise<void>;
+  /** SUPER_ADMIN only: switch the active org context. Pass null to clear. */
+  setActiveOrgId: (orgId: string | null) => void;
 }
 
 // Module-level guard so the onAuthStateChanged listener is only registered once.
@@ -32,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isLoading: false,
   initialized: false,
+  activeOrgId: null,
 
   initializeAuth: () => {
     if (_subscribed) return;
@@ -99,7 +108,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await signOut(firebaseAuth);
     } finally {
-      set({ user: null, firebaseUser: null, isAuthenticated: false, isLoading: false });
+      set({ user: null, firebaseUser: null, isAuthenticated: false, isLoading: false, activeOrgId: null });
     }
   },
+
+  setActiveOrgId: (orgId) => set({ activeOrgId: orgId }),
 }));

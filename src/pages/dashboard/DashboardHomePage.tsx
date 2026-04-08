@@ -11,7 +11,7 @@ const INVITE_ROLES = ['ORG_MEMBER', 'ORG_ADMIN'] as const;
 type OrgUser = { id: string; email: string; name?: string; role: string };
 
 export function DashboardHomePage() {
-  const { user, connectTikTok, isLoading } = useAuthStore();
+  const { user, connectTikTok, isLoading, activeOrgId, setActiveOrgId } = useAuthStore();
   const { connected, loading: statusLoading, refresh: refreshStatus } = useTikTokStatus();
 
   const isAdmin = user?.role === 'ORG_ADMIN' || user?.role === 'SUPER_ADMIN';
@@ -40,7 +40,7 @@ export function DashboardHomePage() {
       .then((res) => setMembers(res.users))
       .catch(() => toast({ title: 'Could not load team members', variant: 'error' }))
       .finally(() => setMembersLoading(false));
-  }, [isAdmin]);
+  }, [isAdmin, activeOrgId]); // re-fetch when SUPER_ADMIN switches org
 
   useEffect(() => {
     fetchMembers();
@@ -179,6 +179,37 @@ export function DashboardHomePage() {
               Refresh
             </button>
           </div>
+
+          {/* ── Active org switcher ── */}
+          {orgs.length > 0 && (
+            <div className="mt-3 flex items-center gap-3 rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+              <span className="text-xs font-semibold text-slate-500 shrink-0">Operating as</span>
+              <select
+                value={activeOrgId ?? ''}
+                onChange={(e) => setActiveOrgId(e.target.value || null)}
+                className="flex-1 rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400"
+              >
+                <option value="">— your own org ({user?.org_id}) —</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name} ({o.id})</option>
+                ))}
+              </select>
+              {activeOrgId && (
+                <button
+                  type="button"
+                  onClick={() => setActiveOrgId(null)}
+                  className="text-xs text-slate-400 hover:text-red-500"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
+          {activeOrgId && (
+            <p className="mt-1 text-xs text-amber-600">
+              All actions (members, TikTok, data) are now scoped to <strong>{activeOrgId}</strong>.
+            </p>
+          )}
 
           {/* Create org form */}
           <form onSubmit={handleCreateOrg} className="mt-3 flex gap-3">
