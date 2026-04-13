@@ -74,7 +74,7 @@ function CreatorRow({
   removing: boolean;
 }) {
   return (
-    <li className="flex items-center justify-between py-2.5 text-sm border-b border-slate-100 last:border-0">
+    <li className="flex items-center justify-between px-3 py-2.5 text-sm">
       <div className="flex items-center gap-3">
         {creator.avatar_url ? (
           <img
@@ -581,7 +581,7 @@ export function TierConfigPage() {
         ) : creators.length === 0 ? (
           <p className="text-sm text-slate-400">No creators on exception lists yet.</p>
         ) : (
-          <ul>
+          <ul className="max-h-96 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-100">
             {creators.map((c) => (
               <CreatorRow
                 key={c.id}
@@ -613,7 +613,7 @@ export function TierConfigPage() {
           </button>
         </div>
 
-        <div className="mt-5 space-y-3">
+        <div className="mt-5">
           {productsLoading ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : products.length === 0 ? (
@@ -621,16 +621,18 @@ export function TierConfigPage() {
               No products configured yet. Click "Add product" to pick from your shop.
             </p>
           ) : (
-            products.map((p) => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                onRemove={() => handleRemoveProduct(p.id)}
-                onSaveThresholds={(t) => handleSaveThresholds(p.id, t)}
-                removing={removingProduct === p.id}
-                saving={savingThresholds === p.id}
-              />
-            ))
+            <div className="max-h-[480px] overflow-y-auto space-y-3 pr-1">
+              {products.map((p) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  onRemove={() => handleRemoveProduct(p.id)}
+                  onSaveThresholds={(t) => handleSaveThresholds(p.id, t)}
+                  removing={removingProduct === p.id}
+                  saving={savingThresholds === p.id}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>

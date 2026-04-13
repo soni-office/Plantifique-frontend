@@ -55,15 +55,30 @@ export function SampleRequestsPage() {
         }
       }
 
-      // Pre-populate review statuses from DB data
+      // Pre-populate review statuses and completed analyses from DB data
       const statuses: Record<string, ReviewStatus> = {};
+      const analyses: Record<string, SampleApplication> = {};
       for (const item of result.items) {
         const rs = item.review_status as ReviewStatus | undefined;
         if (rs && REVIEW_STATUSES.includes(rs)) {
           statuses[item.id] = rs;
         }
+        if (item.analysis_status === "COMPLETED" && item.final_decision) {
+          analyses[item.id] = item;
+        }
       }
       setReviewStatuses((prev) => ({ ...prev, ...statuses }));
+      setAnalysisResults((prev) => ({ ...prev, ...analyses }));
+      // Init feedback state for pre-populated analyses so the feedback UI renders
+      setFeedbacks((prev) => {
+        const next = { ...prev };
+        for (const id of Object.keys(analyses)) {
+          if (!next[id]) {
+            next[id] = { rating: null, comment: "", submitted: false, submitting: false };
+          }
+        }
+        return next;
+      });
     } catch (err) {
       const msg = isAxiosError(err)
         ? (err.response?.data?.detail ?? err.message)
@@ -116,11 +131,15 @@ export function SampleRequestsPage() {
     setAnalyzingId(id);
     try {
       const result = await sampleRequestsApi.analyzeSample(id);
-      setAnalysisResults((prev) => ({ ...prev, [id]: result }));
-      setFeedbacks((prev) => ({
-        ...prev,
-        [id]: { rating: null, comment: "", submitted: false, submitting: false },
-      }));
+      if (result) {
+        setAnalysisResults((prev) => ({ ...prev, [id]: result }));
+        if (!feedbacks[id]) {
+          setFeedbacks((prev) => ({
+            ...prev,
+            [id]: { rating: null, comment: "", submitted: false, submitting: false },
+          }));
+        }
+      }
     } catch {
       toast({ title: "Analysis failed", description: "Could not analyze sample", variant: "error" });
     } finally {
@@ -412,7 +431,7 @@ function DecisionBadge({ decision }: { decision: string }) {
 }
 
 function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; onClose: () => void }) {
-  const detail = (analysis as any).rich_creator_detail;
+  const detail = analysis.rich_creator_detail as any;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
@@ -450,7 +469,7 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                 )}
               </div>
               <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
-                {(analysis as any).decision_reason}
+                {analysis.decision_reason ?? analysis.analysis_reasoning ?? "No reasoning available."}
               </p>
             </div>
 

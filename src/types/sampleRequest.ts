@@ -9,12 +9,17 @@ export interface SampleApplication {
   approve_expiration_time: number; // Unix timestamp
 
   // DB-side analysis fields (present when served from Firestore)
-  analysis_status?: string;     // QUEUED | COMPLETED | FAILED
+  analysis_status?: string;     // NOT_STARTED | QUEUED | COMPLETED | FAILED
   review_status?: string;       // PENDING_REVIEW | APPROVED | REJECTED
   analysis_score?: number;
+  analysis_reasoning?: string;
+  decision_reason?: string;
   final_decision?: string;
   filters_passed?: boolean;
+  validation_reason?: string;
   tier?: string;
+  rich_creator_detail?: Record<string, unknown>;
+  rich_product_detail?: Record<string, unknown>;
 
   creator: {
     creator_open_id: string;
