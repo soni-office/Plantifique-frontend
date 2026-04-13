@@ -4,6 +4,7 @@ import { authApi } from '../../api/auth';
 import { orgsApi, type Org } from '../../api/orgs';
 import { useTikTokStatus } from '../../context/tikTokStatus';
 import { Button } from '../../components/ui/button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { toast } from '../../hooks/useToast';
 
 const INVITE_ROLES = ['ORG_MEMBER', 'ORG_ADMIN'] as const;
@@ -26,6 +27,33 @@ export function DashboardHomePage() {
 
   // ── Revoke state ──
   const [revoking, setRevoking] = useState(false);
+
+  // ── Confirm dialog state ──
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const openConfirm = (config: typeof confirmConfig) => {
+    setConfirmConfig(config);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmConfig) return;
+    setConfirmLoading(true);
+    try {
+      await confirmConfig.onConfirm();
+    } finally {
+      setConfirmLoading(false);
+      setConfirmOpen(false);
+      setConfirmConfig(null);
+    }
+  };
 
   // ── Team members ──
   const [members, setMembers] = useState<OrgUser[]>([]);
@@ -122,32 +150,45 @@ export function DashboardHomePage() {
     }
   };
 
-  const handleRevoke = async () => {
-    if (!confirm('Revoke TikTok Shop access? All team members will lose data access until reconnected.')) return;
-    setRevoking(true);
-    try {
-      await authApi.revokeTikTokAccess();
-      refreshStatus();
-      toast({ title: 'Access revoked', description: 'TikTok Shop connection has been removed.', variant: 'success' });
-    } catch {
-      toast({ title: 'Revoke failed', description: 'Could not revoke access. Try again.', variant: 'error' });
-    } finally {
-      setRevoking(false);
-    }
+  const handleRevoke = () => {
+    openConfirm({
+      title: 'Revoke TikTok Shop Access',
+      description:
+        'All team members will immediately lose data access. You can reconnect at any time by completing the OAuth flow again.',
+      confirmLabel: 'Yes, Revoke Access',
+      onConfirm: async () => {
+        setRevoking(true);
+        try {
+          await authApi.revokeTikTokAccess();
+          refreshStatus();
+          toast({ title: 'Access revoked', description: 'TikTok Shop connection has been removed.', variant: 'success' });
+        } catch {
+          toast({ title: 'Revoke failed', description: 'Could not revoke access. Try again.', variant: 'error' });
+        } finally {
+          setRevoking(false);
+        }
+      },
+    });
   };
 
-  const handleRemoveUser = async (uid: string, email: string) => {
-    if (!confirm(`Remove ${email} from the org? They will lose all access immediately.`)) return;
-    setRemovingUid(uid);
-    try {
-      await authApi.removeUser(uid);
-      setMembers((prev) => prev.filter((m) => m.id !== uid));
-      toast({ title: 'User removed', description: `${email} has been removed.`, variant: 'success' });
-    } catch {
-      toast({ title: 'Remove failed', description: 'Could not remove user. Try again.', variant: 'error' });
-    } finally {
-      setRemovingUid(null);
-    }
+  const handleRemoveUser = (uid: string, email: string) => {
+    openConfirm({
+      title: 'Remove Team Member',
+      description: `${email} will immediately lose all access to this organisation. This action cannot be undone.`,
+      confirmLabel: 'Remove Member',
+      onConfirm: async () => {
+        setRemovingUid(uid);
+        try {
+          await authApi.removeUser(uid);
+          setMembers((prev) => prev.filter((m) => m.id !== uid));
+          toast({ title: 'User removed', description: `${email} has been removed.`, variant: 'success' });
+        } catch {
+          toast({ title: 'Remove failed', description: 'Could not remove user. Try again.', variant: 'error' });
+        } finally {
+          setRemovingUid(null);
+        }
+      },
+    });
   };
 
   return (
@@ -426,6 +467,20 @@ export function DashboardHomePage() {
           )}
         </div>
       )}
+      {/* ── Confirm Dialog ── */}
+      <ConfirmDialog
+        open={confirmOpen}
+        title={confirmConfig?.title ?? ''}
+        description={confirmConfig?.description}
+        confirmLabel={confirmConfig?.confirmLabel ?? 'Confirm'}
+        variant="danger"
+        isLoading={confirmLoading}
+        onConfirm={handleConfirmAction}
+        onCancel={() => {
+          setConfirmOpen(false);
+          setConfirmConfig(null);
+        }}
+      />
     </section>
   );
 }

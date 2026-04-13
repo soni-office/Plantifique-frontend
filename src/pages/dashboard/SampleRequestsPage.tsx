@@ -10,6 +10,20 @@ const PAGE_SIZE = 30;
 const REVIEW_STATUSES = ["PENDING_REVIEW", "APPROVED", "REJECTED"] as const;
 type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
+// Maps our internal status to TikTok's review_result field
+const STATUS_TO_TIKTOK: Record<string, "APPROVE" | "REJECT"> = {
+  APPROVED: "APPROVE",
+  REJECTED: "REJECT",
+};
+
+const REJECT_REASONS = [
+  { value: "NOT_MATCH", label: "Does not meet collaboration requirements" },
+  { value: "OFFLINE",    label: "Product has been taken offline" },
+  { value: "OUT_OF_STOCK", label: "Product is temporarily out of stock" },
+  { value: "OTHER",     label: "Other reason" },
+] as const;
+type RejectReason = (typeof REJECT_REASONS)[number]["value"];
+
 const REVIEW_STATUS_STYLES: Record<ReviewStatus, string> = {
   PENDING_REVIEW: "bg-slate-100 text-slate-600 border-slate-200",
   APPROVED: "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -39,6 +53,10 @@ export function SampleRequestsPage() {
   const [reviewStatuses, setReviewStatuses] = useState<Record<string, ReviewStatus>>({});
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Record<string, FeedbackEntry>>({});
+
+  // Reject reason modal state
+  const [pendingReject, setPendingReject] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
+  const [selectedRejectReason, setSelectedRejectReason] = useState<RejectReason>("NOT_MATCH");
 
   const loadPage = async (cursor: string | null) => {
     setIsLoading(true);
@@ -147,15 +165,53 @@ export function SampleRequestsPage() {
     }
   };
 
-  const handleStatusChange = async (id: string, newStatus: ReviewStatus) => {
+  const handleStatusChange = (id: string, newStatus: ReviewStatus) => {
+    // PENDING_REVIEW means no TikTok action — just update DB
+    if (newStatus === "PENDING_REVIEW") {
+      void confirmStatusChange(id, newStatus, undefined);
+      return;
+    }
+    // REJECTED requires a reason — show the modal first
+    if (newStatus === "REJECTED") {
+      setSelectedRejectReason("NOT_MATCH");
+      setPendingReject({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
+      // Optimistically update the dropdown to show REJECTED, but revert if user cancels
+      setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
+      return;
+    }
+    // APPROVED — confirm immediately
+    void confirmStatusChange(id, newStatus, undefined);
+  };
+
+  const confirmStatusChange = async (
+    id: string,
+    newStatus: ReviewStatus,
+    rejectReason: RejectReason | undefined,
+  ) => {
     setUpdatingStatusId(id);
     try {
-      await sampleRequestsApi.updateReviewStatus(id, newStatus);
+      const tiktokResult = STATUS_TO_TIKTOK[newStatus];
+      const result = await sampleRequestsApi.updateReviewStatus(
+        id,
+        newStatus,
+        tiktokResult ?? "APPROVE",
+        rejectReason,
+      );
       setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
+      if (result.warning) {
+        toast({
+          title: "Saved locally — TikTok sync failed",
+          description: result.warning,
+          variant: "error",
+        });
+      } else if (result.tiktok_synced) {
+        toast({ title: "Status updated & synced to TikTok Shop ✓", variant: "success" });
+      }
     } catch {
       toast({ title: "Failed to update status", variant: "error" });
     } finally {
       setUpdatingStatusId(null);
+      setPendingReject(null);
     }
   };
 
@@ -221,85 +277,60 @@ export function SampleRequestsPage() {
                   <th className="py-2 pr-4">TikTok Status</th>
                   <th className="py-2 pr-4">Review</th>
                   <th className="py-2 pr-4">Creator</th>
-                  <th className="py-2 pr-4">Avatar</th>
                   <th className="py-2 pr-4">Product</th>
                   <th className="py-2 pr-4">AI Analysis</th>
                 </tr>
               </thead>
               <tbody>
-                {requests.map((req) => {
-                  const analysis = analysisResults[req.id];
-                  const reviewStatus = reviewStatuses[req.id] ?? "PENDING_REVIEW";
-                  const fb = feedbacks[req.id];
-                  const tiktokStatus = req.tiktok_status ?? req.status;
+                {(() => {
+                  // ── Group by creator preserving page order, then flatten ──
+                  const groups: { creatorId: string; rows: typeof requests }[] = [];
+                  const indexMap = new Map<string, number>();
+                  for (const req of requests) {
+                    const cid = req.creator.creator_open_id;
+                    if (indexMap.has(cid)) {
+                      groups[indexMap.get(cid)!].rows.push(req);
+                    } else {
+                      indexMap.set(cid, groups.length);
+                      groups.push({ creatorId: cid, rows: [req] });
+                    }
+                  }
 
-                  return (
-                    <tr key={req.id} className="border-b border-slate-100 align-top">
-                      <td className="py-3 pr-4 font-mono text-xs">{req.id}</td>
+                  return groups.flatMap((group, gi) =>
+                    group.rows.map((req, ri) => {
+                      const analysis = analysisResults[req.id];
+                      const reviewStatus = reviewStatuses[req.id] ?? "PENDING_REVIEW";
+                      const fb = feedbacks[req.id];
+                      const tiktokStatus = req.tiktok_status ?? req.status;
 
-                      <td className="py-3 pr-4 text-xs text-slate-500">{tiktokStatus}</td>
+                      const isFirstInGroup = ri === 0;
+                      const isLastInGroup = ri === group.rows.length - 1;
 
-                      <td className="py-3 pr-4">
-                        <select
-                          value={reviewStatus}
-                          disabled={updatingStatusId === req.id}
-                          onChange={(e) => handleStatusChange(req.id, e.target.value as ReviewStatus)}
-                          className={`rounded border px-2 py-1 text-[11px] font-bold uppercase tracking-wide cursor-pointer appearance-none pr-6 transition-colors disabled:opacity-50 ${REVIEW_STATUS_STYLES[reviewStatus]}`}
+                      // Alternating group tint for visual separation
+                      const groupBg = gi % 2 === 0 ? "bg-white" : "bg-slate-50/60";
+                      // Bold top border only where a new creator group starts (after the first group)
+                      const topBorder = gi > 0 && isFirstInGroup
+                        ? "border-t-2 border-t-slate-300"
+                        : "border-t border-t-slate-100";
+                      // Thin bottom border between rows within a group
+                      const bottomBorder = isLastInGroup ? "" : "border-b border-b-slate-100";
+
+                      return (
+                        <tr
+                          key={req.id}
+                          className={`align-top ${groupBg} ${topBorder} ${bottomBorder}`}
                         >
-                          {REVIEW_STATUSES.map((s) => (
-                            <option key={s} value={s}>{s.replace("_", " ")}</option>
-                          ))}
-                        </select>
-                      </td>
+                          <td className="py-3 pr-4 font-mono text-xs text-slate-400">{req.id}</td>
 
-                      <td className="py-3 pr-4">
-                        <Link
-                          to={`../creators/${req.creator.creator_open_id}`}
-                          className="hover:underline font-medium"
-                        >
-                          {req.creator.username}
-                        </Link>
-                        {req.creator.follower_count > 0 && (
-                          <div className="text-[11px] text-slate-400">
-                            {req.creator.follower_count.toLocaleString()} followers
-                          </div>
-                        )}
-                      </td>
+                          <td className="py-3 pr-4 text-xs text-slate-500">{tiktokStatus}</td>
 
-                      <td className="py-3 pr-4">
-                        {req.creator.avatar_url ? (
-                          <img
-                            src={req.creator.avatar_url}
-                            alt={req.creator.nickname}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="h-10 w-10 rounded-full bg-slate-100" />
-                        )}
-                      </td>
-
-                      <td className="py-3 pr-4">
-                        <Link
-                          to={`../products/${req.product.id}`}
-                          className="hover:underline font-medium"
-                        >
-                          {req.product.title}
-                        </Link>
-                        {req.product.sku_name && (
-                          <div className="text-[11px] text-slate-400">{req.product.sku_name}</div>
-                        )}
-                      </td>
-
-                      <td className="py-3 pr-4 min-w-[220px]">
-                        {!analysis ? (
-                          <div className="flex flex-col gap-1">
-                            {req.analysis_status === "COMPLETED" && (
-                              <span className="text-[11px] text-emerald-600 font-semibold">Already analysed</span>
-                            )}
-                            <button
-                              onClick={() => handleAnalyze(req.id)}
-                              disabled={analyzingId === req.id}
-                              className="rounded bg-black px-4 py-1.5 text-white text-xs font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 w-fit"
+                          <td className="py-3 pr-4">
+                            <select
+                              value={reviewStatus}
+                              disabled={true} //remove this line and uncomment below for Review status
+                              //disabled={updatingStatusId === req.id}
+                              onChange={(e) => handleStatusChange(req.id, e.target.value as ReviewStatus)}
+                              className={`rounded border px-2 py-1 text-[11px] font-bold uppercase tracking-wide cursor-pointer appearance-none pr-6 transition-colors disabled:opacity-50 ${REVIEW_STATUS_STYLES[reviewStatus]}`}
                             >
                               {analyzingId === req.id ? "Analyzing…" : "Analyze"}
                             </button>
@@ -329,7 +360,7 @@ export function SampleRequestsPage() {
                                 </div>
                               )}
                             </div>
-                            
+
                             {/* Stage indicators */}
                             <div className="flex flex-col text-[11px] text-slate-500 font-medium">
                               <div className="flex justify-between border-b border-slate-50 pb-0.5">
@@ -356,7 +387,7 @@ export function SampleRequestsPage() {
                             >
                               See reasoning →
                             </button>
-                            
+
                             {/* AI Feedback */}
                             {fb && (
                               fb.submitted ? (
@@ -364,50 +395,126 @@ export function SampleRequestsPage() {
                                   Feedback saved ({fb.rating === "up" ? "👍" : "👎"})
                                 </p>
                               ) : (
-                                <div className="mt-1 border-t border-slate-100 pt-2 flex flex-col gap-1.5">
-                                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Rate AI</p>
-                                  <div className="flex gap-2">
-                                    {(["up", "down"] as const).map((r) => (
-                                      <button
-                                        key={r}
-                                        onClick={() => handleFeedbackRating(req.id, r)}
-                                        className={`px-2 py-1 rounded text-sm border transition-colors ${
-                                          fb.rating === r
-                                            ? r === "up" ? "bg-emerald-100 border-emerald-300" : "bg-rose-100 border-rose-300"
-                                            : "bg-white border-slate-200 hover:bg-slate-50"
-                                        }`}
-                                      >
-                                        {r === "up" ? "👍" : "👎"}
-                                      </button>
-                                    ))}
+                                <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 ring-1 ring-slate-300" />
+                              )}
+                              <div>
+                                <Link
+                                  to={`../creators/${req.creator.creator_open_id}`}
+                                  className="font-semibold text-slate-800 hover:underline text-[13px]"
+                                >
+                                  {req.creator.username}
+                                </Link>
+                                {req.creator.follower_count > 0 && (
+                                  <div className="text-[11px] text-slate-400">
+                                    {req.creator.follower_count.toLocaleString()} followers
                                   </div>
-                                  {fb.rating && (
-                                    <>
-                                      <textarea
-                                        rows={2}
-                                        placeholder="Optional comment…"
-                                        value={fb.comment}
-                                        onChange={(e) => handleFeedbackComment(req.id, e.target.value)}
-                                        className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-700 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300"
-                                      />
-                                      <button
-                                        onClick={() => handleFeedbackSubmit(req.id)}
-                                        disabled={fb.submitting}
-                                        className="self-start rounded bg-slate-800 px-3 py-1 text-[11px] text-white font-semibold hover:bg-slate-700 transition-colors disabled:opacity-50"
-                                      >
-                                        {fb.submitting ? "Saving…" : "Submit"}
-                                      </button>
-                                    </>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* ── Product ── */}
+                          <td className="py-3 pr-4">
+                            <Link
+                              to={`../products/${req.product.id}`}
+                              className="hover:underline font-medium text-slate-800"
+                            >
+                              {req.product.title}
+                            </Link>
+                            {req.product.sku_name && (
+                              <div className="text-[11px] text-slate-400">{req.product.sku_name}</div>
+                            )}
+                          </td>
+
+                          {/* ── AI Analysis ── */}
+                          <td className="py-3 pr-4 min-w-[220px]">
+                            {!analysis ? (
+                              <div className="flex flex-col gap-1">
+                                {req.analysis_status === "COMPLETED" && (
+                                  <span className="text-[11px] text-emerald-600 font-semibold">Already analysed</span>
+                                )}
+                                <button
+                                  onClick={() => handleAnalyze(req.id)}
+                                  disabled={analyzingId === req.id}
+                                  className="rounded bg-black px-4 py-1.5 text-white text-xs font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 w-fit"
+                                >
+                                  {analyzingId === req.id ? "Analyzing…" : "Analyze"}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-2 py-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <DecisionBadge decision={analysis.final_decision ?? ""} />
+                                  {analysis.tier && (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                                      {analysis.tier}
+                                    </span>
+                                  )}
+                                  {analysis.analysis_score != null && (
+                                    <span className="text-xs font-semibold text-slate-700">
+                                      {analysis.analysis_score}/100
+                                    </span>
                                   )}
                                 </div>
-                              )
+                                <button
+                                  onClick={() => setSelectedAnalysis(analysis)}
+                                  className="text-[11px] text-blue-600 font-bold hover:underline text-left"
+                                >
+                                  See reasoning →
+                                </button>
+
+                                {fb && (
+                                  fb.submitted ? (
+                                    <p className="text-[11px] text-emerald-600 font-semibold">
+                                      Feedback saved ({fb.rating === "up" ? "👍" : "👎"})
+                                    </p>
+                                  ) : (
+                                    <div className="mt-1 border-t border-slate-100 pt-2 flex flex-col gap-1.5">
+                                      <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Rate AI</p>
+                                      <div className="flex gap-2">
+                                        {(["up", "down"] as const).map((r) => (
+                                          <button
+                                            key={r}
+                                            onClick={() => handleFeedbackRating(req.id, r)}
+                                            className={`px-2 py-1 rounded text-sm border transition-colors ${
+                                              fb.rating === r
+                                                ? r === "up" ? "bg-emerald-100 border-emerald-300" : "bg-rose-100 border-rose-300"
+                                                : "bg-white border-slate-200 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            {r === "up" ? "👍" : "👎"}
+                                          </button>
+                                        ))}
+                                      </div>
+                                      {fb.rating && (
+                                        <>
+                                          <textarea
+                                            rows={2}
+                                            placeholder="Optional comment…"
+                                            value={fb.comment}
+                                            onChange={(e) => handleFeedbackComment(req.id, e.target.value)}
+                                            className="w-full rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-700 resize-none focus:outline-none focus:ring-1 focus:ring-blue-300"
+                                          />
+                                          <button
+                                            onClick={() => handleFeedbackSubmit(req.id)}
+                                            disabled={fb.submitting}
+                                            className="self-start rounded bg-slate-800 px-3 py-1 text-[11px] text-white font-semibold hover:bg-slate-700 transition-colors disabled:opacity-50"
+                                          >
+                                            {fb.submitting ? "Saving…" : "Submit"}
+                                          </button>
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
                             )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                          </td>
+                        </tr>
+                      );
+                    })
                   );
-                })}
+                })()}
               </tbody>
             </table>
           </div>
@@ -437,6 +544,59 @@ export function SampleRequestsPage() {
 
       {selectedAnalysis && (
         <ReasoningModal analysis={selectedAnalysis} onClose={() => setSelectedAnalysis(null)} />
+      )}
+
+      {/* ── Reject Reason Modal ── */}
+      {pendingReject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Reason for Rejection</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              TikTok requires a specific reason when rejecting a sample application.
+            </p>
+            <div className="flex flex-col gap-2 mb-6">
+              {REJECT_REASONS.map((r) => (
+                <label
+                  key={r.value}
+                  className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                    selectedRejectReason === r.value
+                      ? "border-rose-400 bg-rose-50"
+                      : "border-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="reject_reason"
+                    value={r.value}
+                    checked={selectedRejectReason === r.value}
+                    onChange={() => setSelectedRejectReason(r.value)}
+                    className="accent-rose-500"
+                  />
+                  <span className="text-sm text-slate-700">{r.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  // Revert the dropdown back to previous status
+                  setReviewStatuses((prev) => ({ ...prev, [pendingReject.id]: pendingReject.currentStatus }));
+                  setPendingReject(null);
+                }}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={updatingStatusId === pendingReject.id}
+                onClick={() => void confirmStatusChange(pendingReject.id, "REJECTED", selectedRejectReason)}
+                className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white hover:bg-rose-700 transition-colors disabled:opacity-50"
+              >
+                {updatingStatusId === pendingReject.id ? "Rejecting…" : "Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
