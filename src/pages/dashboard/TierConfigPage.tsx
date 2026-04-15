@@ -140,7 +140,7 @@ function ProductCard({
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center gap-4 p-4">
+      <div className="flex items-start gap-4 p-4 overflow-hidden">
         {product.sku_image_url && (
           <img
             src={product.sku_image_url}
@@ -149,8 +149,8 @@ function ProductCard({
           />
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 truncate">{product.title}</p>
-          <p className="font-mono text-[10px] text-slate-400 mt-0.5">{product.id}</p>
+          <p className="font-semibold text-slate-800 break-words leading-snug">{product.title}</p>
+          <p className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">{product.id}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLORS[product.tier] ?? ""}`}>
               {product.tier}
