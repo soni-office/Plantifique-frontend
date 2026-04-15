@@ -464,22 +464,34 @@ function DecisionBadge({ decision }: { decision: string }) {
 
 function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; onClose: () => void }) {
   const detail = analysis.rich_creator_detail as any;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
-        <div className="p-8">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Analysis Reasoning</h3>
-              <p className="text-sm text-slate-500 mt-1">Detailed breakdown of the AI decision</p>
-            </div>
-            <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-              <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
 
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-hidden"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+        {/* ── Sticky header ── */}
+        <div className="shrink-0 flex justify-between items-start px-8 pt-8 pb-4 border-b border-slate-100">
+          <div>
+            <h3 className="text-xl font-bold text-slate-900">Analysis Reasoning</h3>
+            <p className="text-sm text-slate-500 mt-1">Detailed breakdown of the AI decision</p>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full transition-colors shrink-0 ml-4">
+            <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* ── Scrollable content ── */}
+        <div className="overflow-y-auto flex-1 px-8 py-6">
           <div className="space-y-4">
             <div className={`p-4 rounded-xl border ${
               analysis.final_decision === "ACCEPT" ? "bg-emerald-50 border-emerald-100" :
@@ -487,8 +499,8 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
               analysis.final_decision === "FLAG_INTERNAL" ? "bg-violet-50 border-violet-100" :
               "bg-rose-50 border-rose-100"
             }`}>
-              <div className="flex justify-between items-center mb-2">
-                <div className="flex items-center gap-2">
+              <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <DecisionBadge decision={analysis.final_decision ?? ""} />
                   {analysis.tier && (
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
@@ -497,16 +509,16 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                   )}
                 </div>
                 {analysis.commerce_score != null && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                      commerce_score: {analysis.commerce_score}/100
+                      commerce: {analysis.commerce_score}/100
                     </span>
                     <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                      aesthetic_score: {analysis.aesthetic_score}/100
+                      aesthetic: {analysis.aesthetic_score}/100
                     </span>
                     {analysis.visual_score != null && (
                       <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                        visual_score: {analysis.visual_score}/100
+                        visual: {analysis.visual_score}/100
                       </span>
                     )}
                   </div>
@@ -521,7 +533,7 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                     </p>
                   </div>
                 )}
-                
+
                 {analysis.aesthetic_reasoning && (
                   <div>
                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Aesthetic Phase</h4>
@@ -558,7 +570,7 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                   <div className="space-y-2 text-xs font-medium text-slate-600">
                     <div className="flex justify-between">
                       <span>Gender</span>
-                      <div className="flex gap-1 text-[10px]">
+                      <div className="flex gap-1 text-[10px] flex-wrap justify-end">
                         {detail.follower_gender?.map((g: any) => (
                           <span key={g.key} className="bg-white px-1.5 py-0.5 rounded border border-emerald-200">
                             {g.key}: {(parseFloat(g.value) * 100).toFixed(0)}%
@@ -589,7 +601,7 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
                 </div>
               </div>
             )}
-            
+
             {/* Top Categories */}
             {analysis.rich_creator_detail?.top_categories && analysis.rich_creator_detail.top_categories.length > 0 && (
               <div className="bg-white border border-slate-100 rounded-xl p-5 shadow-sm">
@@ -613,15 +625,16 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
               </div>
             )}
           </div>
+        </div>
 
-          <div className="mt-8">
-            <button
-              onClick={onClose}
-              className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors"
-            >
-              Close
-            </button>
-          </div>
+        {/* ── Sticky footer ── */}
+        <div className="shrink-0 px-8 pb-8 pt-4 border-t border-slate-100">
+          <button
+            onClick={onClose}
+            className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>
