@@ -161,14 +161,14 @@ export function CreatorDetailsPage() {
                 href={`https://www.tiktok.com/@${creator.username.replace(/^@/, "")}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Open Creator's TikTok Profile"
-                className="text-slate-400 hover:text-blue-500 transition-colors bg-slate-50 p-1 rounded border border-slate-200 hover:border-blue-200"
+                className="group flex items-center overflow-hidden text-slate-400 hover:text-white hover:bg-slate-800 transition-all duration-300 ease-in-out bg-slate-50 px-1.5 py-1.5 rounded-full shadow-sm border border-slate-200"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                <svg xmlns="http://www.w3.org/2000/svg" className="shrink-0" width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"></path>
                 </svg>
+                <span className="text-[10px] font-bold origin-left max-w-0 opacity-0 group-hover:max-w-xs group-hover:opacity-100 group-hover:ml-2.5 group-hover:pr-1.5 transition-all duration-300 ease-in-out whitespace-nowrap tracking-wide">
+                  Open TikTok Profile
+                </span>
               </a>
             </div>
             <p className="mt-1 text-sm text-slate-600">

@@ -3,7 +3,7 @@ import { isAxiosError } from "axios";
 import { sampleRequestsApi } from "../../api/sampleRequests";
 import type { SampleApplication } from "../../types/sampleRequest";
 import { toast } from "../../hooks/useToast";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 const PAGE_SIZE = 30;
 
@@ -43,9 +43,18 @@ export function SampleRequestsPage() {
   const [syncing, setSyncing] = useState(false);
   const [hasMore, setHasMore] = useState(false);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialPage = Number(searchParams.get("page")) || 0;
+  
   // Cursor stack: index 0 = first page (no cursor), each next push = next cursor
-  const cursorsRef = useRef<(string | null)[]>([null]);
-  const [pageIndex, setPageIndex] = useState(0);
+  // We hydrate from sessionStorage so the stack naturally survives navigating to Profile -> Back
+  const cursorsRef = useRef<(string | null)[]>(
+    (() => {
+      const saved = sessionStorage.getItem("sr_cursor_stack");
+      return saved ? JSON.parse(saved) : [null];
+    })()
+  );
+  const [pageIndex, setPageIndex] = useState(initialPage);
 
   const [analysisResults, setAnalysisResults] = useState<Record<string, SampleApplication>>({});
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
@@ -54,9 +63,11 @@ export function SampleRequestsPage() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Record<string, FeedbackEntry>>({});
 
-  // Reject reason modal state
+  // Status change state
   const [pendingReject, setPendingReject] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState<RejectReason>("NOT_MATCH");
+  const [customRejectReason, setCustomRejectReason] = useState("");
+  const [pendingApprove, setPendingApprove] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
 
   const loadPage = async (cursor: string | null) => {
     setIsLoading(true);
@@ -70,6 +81,7 @@ export function SampleRequestsPage() {
         const newIndex = cursorsRef.current.indexOf(cursor) + 1;
         if (cursorsRef.current.length <= newIndex) {
           cursorsRef.current = [...cursorsRef.current, result.next_cursor];
+          sessionStorage.setItem("sr_cursor_stack", JSON.stringify(cursorsRef.current));
         }
       }
 
@@ -107,21 +119,32 @@ export function SampleRequestsPage() {
     }
   };
 
+  // On initial mount, load the correct cursor for the page in the URL
   useEffect(() => {
-    void loadPage(null);
+    // If we're on page N, try to load its cursor from our restored stack
+    const targetCursor = cursorsRef.current[initialPage] ?? null;
+    void loadPage(targetCursor);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNext = () => {
     const nextCursor = cursorsRef.current[pageIndex + 1];
     if (!nextCursor) return;
-    setPageIndex((p) => p + 1);
+    const newPage = pageIndex + 1;
+    setPageIndex(newPage);
+    setSearchParams({ page: newPage.toString(), cursor: nextCursor });
     void loadPage(nextCursor);
   };
 
   const handlePrev = () => {
     if (pageIndex === 0) return;
-    const prevCursor = cursorsRef.current[pageIndex - 1];
-    setPageIndex((p) => p - 1);
+    const newPage = pageIndex - 1;
+    const prevCursor = cursorsRef.current[newPage];
+    setPageIndex(newPage);
+    if (newPage === 0) {
+      setSearchParams({});
+    } else {
+      setSearchParams({ page: newPage.toString(), cursor: prevCursor || "" });
+    }
     void loadPage(prevCursor ?? null);
   };
 
@@ -136,7 +159,9 @@ export function SampleRequestsPage() {
       });
       // Reload first page after sync
       cursorsRef.current = [null];
+      sessionStorage.removeItem("sr_cursor_stack");
       setPageIndex(0);
+      setSearchParams({});
       void loadPage(null);
     } catch {
       toast({ title: "Sync failed", description: "Could not pull from TikTok.", variant: "error" });
@@ -174,19 +199,24 @@ export function SampleRequestsPage() {
     // REJECTED requires a reason — show the modal first
     if (newStatus === "REJECTED") {
       setSelectedRejectReason("NOT_MATCH");
+      setCustomRejectReason("");
       setPendingReject({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
       // Optimistically update the dropdown to show REJECTED, but revert if user cancels
       setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
       return;
     }
-    // APPROVED — confirm immediately
-    void confirmStatusChange(id, newStatus, undefined);
+    // APPROVED — ask for confirmation
+    if (newStatus === "APPROVED") {
+       setPendingApprove({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
+       setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
+       return;
+    }
   };
 
   const confirmStatusChange = async (
     id: string,
     newStatus: ReviewStatus,
-    rejectReason: RejectReason | undefined,
+    rejectReason: string | undefined,
   ) => {
     setUpdatingStatusId(id);
     try {
@@ -208,10 +238,16 @@ export function SampleRequestsPage() {
         toast({ title: "Status updated & synced to TikTok Shop ✓", variant: "success" });
       }
     } catch {
+      // Revert optimism if API fails
+      setReviewStatuses((prev) => ({ 
+        ...prev, 
+        [id]: pendingReject?.currentStatus || pendingApprove?.currentStatus || "PENDING_REVIEW" 
+      }));
       toast({ title: "Failed to update status", variant: "error" });
     } finally {
       setUpdatingStatusId(null);
       setPendingReject(null);
+      setPendingApprove(null);
     }
   };
 
@@ -327,73 +363,26 @@ export function SampleRequestsPage() {
                           <td className="py-3 pr-4">
                             <select
                               value={reviewStatus}
-                              disabled={true} //remove this line and uncomment below for Review status
-                              //disabled={updatingStatusId === req.id}
+                              disabled={true} // To enable review status, remove this line and uncomment the line below
+                              // disabled={updatingStatusId === req.id || pendingReject?.id === req.id || pendingApprove?.id === req.id}
                               onChange={(e) => handleStatusChange(req.id, e.target.value as ReviewStatus)}
                               className={`rounded border px-2 py-1 text-[11px] font-bold uppercase tracking-wide cursor-pointer appearance-none pr-6 transition-colors disabled:opacity-50 ${REVIEW_STATUS_STYLES[reviewStatus]}`}
                             >
-                              {analyzingId === req.id ? "Analyzing…" : "Analyze"}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-2 py-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <DecisionBadge decision={analysis.final_decision ?? ""} />
-                              {analysis.tier && (
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                                  {analysis.tier}
-                                </span>
-                              )}
-                              {(analysis.commerce_score != null) && (
-                                <div className="flex flex-col gap-1 w-full mt-1">
-                                  <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
-                                    commerce_score: {analysis.commerce_score}
-                                  </span>
-                                  <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
-                                    aesthetic_score: {analysis.aesthetic_score}
-                                  </span>
-                                  {analysis.visual_score != null && (
-                                    <span className="text-[10px] font-mono tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
-                                      visual_score: {analysis.visual_score}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                              {REVIEW_STATUSES.map((s) => (
+                                <option key={s} value={s}>{s.replace("_", " ")}</option>
+                              ))}
+                            </select>
+                          </td>
 
-                            {/* Stage indicators */}
-                            <div className="flex flex-col text-[11px] text-slate-500 font-medium">
-                              <div className="flex justify-between border-b border-slate-50 pb-0.5">
-                                <span>Filters:</span>
-                                <span className={
-                                  analysis.filters_passed === true ? "text-emerald-600" :
-                                  analysis.filters_passed === false ? "text-rose-600" :
-                                  "text-slate-400"
-                                }>
-                                  {analysis.filters_passed === true ? "PASSED" :
-                                   analysis.filters_passed === false ? "FAILED" : "N/A"}
-                                </span>
-                              </div>
-                              <div className="flex justify-between pt-0.5">
-                                <span>AI Scoring:</span>
-                                <span className={analysis.compatibility_status === "PROCESSED" ? "text-blue-600" : "text-slate-400"}>
-                                  {analysis.compatibility_status === "PROCESSED" ? "DONE" : "N/A"}
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => setSelectedAnalysis(analysis)}
-                              className="text-[11px] text-blue-600 font-bold hover:underline text-left"
-                            >
-                              See reasoning →
-                            </button>
-
-                            {/* AI Feedback */}
-                            {fb && (
-                              fb.submitted ? (
-                                <p className="text-[11px] text-emerald-600 font-semibold">
-                                  Feedback saved ({fb.rating === "up" ? "👍" : "👎"})
-                                </p>
+                          {/* ── Creator column: avatar + name on EVERY row ── */}
+                          <td className="py-3 pr-4">
+                            <div className="flex items-center gap-2.5">
+                              {req.creator.avatar_url ? (
+                                <img
+                                  src={req.creator.avatar_url}
+                                  alt={req.creator.nickname}
+                                  className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                                />
                               ) : (
                                 <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 ring-1 ring-slate-300" />
                               )}
@@ -445,17 +434,50 @@ export function SampleRequestsPage() {
                               <div className="flex flex-col gap-2 py-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <DecisionBadge decision={analysis.final_decision ?? ""} />
-                                  {analysis.tier && (
+
+                                   {analysis.tier && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                                       {analysis.tier}
                                     </span>
                                   )}
-                                  {analysis.analysis_score != null && (
-                                    <span className="text-xs font-semibold text-slate-700">
-                                      {analysis.analysis_score}/100
-                                    </span>
+                                  {(analysis.commerce_score != null) && (
+                                    <div className="flex flex-col gap-1 w-full mt-1">
+                                      <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                        commerce_score: {analysis.commerce_score}
+                                      </span>
+                                      <span className="text-[10px] font-semibold tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                        aesthetic_score: {analysis.aesthetic_score}
+                                      </span>
+                                      {analysis.visual_score != null && (
+                                        <span className="text-[10px] font-mono tracking-tight text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-fit">
+                                          visual_score: {analysis.visual_score}
+                                        </span>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
+
+                                {/* Stage indicators */}
+                                <div className="flex flex-col text-[11px] text-slate-500 font-medium">
+                                  <div className="flex justify-between border-b border-slate-50 pb-0.5">
+                                    <span>Filters:</span>
+                                    <span className={
+                                      analysis.filters_passed === true ? "text-emerald-600" :
+                                      analysis.filters_passed === false ? "text-rose-600" :
+                                      "text-slate-400"
+                                    }>
+                                      {analysis.filters_passed === true ? "PASSED" :
+                                       analysis.filters_passed === false ? "FAILED" : "N/A"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between pt-0.5">
+                                    <span>AI Scoring:</span>
+                                    <span className={analysis.compatibility_status === "PROCESSED" ? "text-blue-600" : "text-slate-400"}>
+                                      {analysis.compatibility_status === "PROCESSED" ? "DONE" : "N/A"}
+                                    </span>
+                                  </div>
+                                </div>
+
                                 <button
                                   onClick={() => setSelectedAnalysis(analysis)}
                                   className="text-[11px] text-blue-600 font-bold hover:underline text-left"
@@ -556,24 +578,37 @@ export function SampleRequestsPage() {
             </p>
             <div className="flex flex-col gap-2 mb-6">
               {REJECT_REASONS.map((r) => (
-                <label
-                  key={r.value}
-                  className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
-                    selectedRejectReason === r.value
-                      ? "border-rose-400 bg-rose-50"
-                      : "border-slate-200 hover:bg-slate-50"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="reject_reason"
-                    value={r.value}
-                    checked={selectedRejectReason === r.value}
-                    onChange={() => setSelectedRejectReason(r.value)}
-                    className="accent-rose-500"
-                  />
-                  <span className="text-sm text-slate-700">{r.label}</span>
-                </label>
+                <div key={r.value}>
+                  <label
+                    className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                      selectedRejectReason === r.value
+                        ? "border-rose-400 bg-rose-50"
+                        : "border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="reject_reason"
+                      value={r.value}
+                      checked={selectedRejectReason === r.value}
+                      onChange={() => setSelectedRejectReason(r.value)}
+                      className="accent-rose-500"
+                    />
+                    <span className="text-sm text-slate-700">{r.label}</span>
+                  </label>
+                  {selectedRejectReason === "OTHER" && r.value === "OTHER" && (
+                    <div className="mt-2 pl-8">
+                      <input
+                        type="text"
+                        placeholder="Type custom reason here..."
+                        value={customRejectReason}
+                        onChange={(e) => setCustomRejectReason(e.target.value)}
+                        autoFocus
+                        className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
+                      />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
             <div className="flex gap-3">
@@ -584,15 +619,56 @@ export function SampleRequestsPage() {
                   setPendingReject(null);
                 }}
                 className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                disabled={updatingStatusId === pendingReject.id}
               >
                 Cancel
               </button>
               <button
-                disabled={updatingStatusId === pendingReject.id}
-                onClick={() => void confirmStatusChange(pendingReject.id, "REJECTED", selectedRejectReason)}
+                disabled={updatingStatusId === pendingReject.id || (selectedRejectReason === "OTHER" && !customRejectReason.trim())}
+                onClick={() => {
+                  const finalReason = selectedRejectReason === "OTHER" ? customRejectReason.trim() : selectedRejectReason;
+                  void confirmStatusChange(pendingReject.id, "REJECTED", finalReason);
+                }}
                 className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white hover:bg-rose-700 transition-colors disabled:opacity-50"
               >
                 {updatingStatusId === pendingReject.id ? "Rejecting…" : "Confirm Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Approve Confirmation Modal ── */}
+      {pendingApprove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center transform shadow-emerald-900/10 border-t-4 border-emerald-500">
+             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 mb-4">
+                <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                 </svg>
+             </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Approve Request?</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              This will approve the sample request and sync the action to TikTok Shop.
+            </p>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setReviewStatuses((prev) => ({ ...prev, [pendingApprove.id]: pendingApprove.currentStatus }));
+                  setPendingApprove(null);
+                }}
+                className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                disabled={updatingStatusId === pendingApprove.id}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={updatingStatusId === pendingApprove.id}
+                onClick={() => void confirmStatusChange(pendingApprove.id, "APPROVED", undefined)}
+                className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-bold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 shadow-sm shadow-emerald-600/20"
+              >
+                {updatingStatusId === pendingApprove.id ? "Approving…" : "Confirm Approve"}
               </button>
             </div>
           </div>
