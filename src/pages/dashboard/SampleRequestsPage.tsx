@@ -363,8 +363,8 @@ export function SampleRequestsPage() {
                           <td className="py-3 pr-4">
                             <select
                               value={reviewStatus}
-                              disabled={true} // To enable review status, remove this line and uncomment the line below
-                              // disabled={updatingStatusId === req.id || pendingReject?.id === req.id || pendingApprove?.id === req.id}
+                              // disabled={true} // To enable review status, remove this line and uncomment the line below
+                              disabled={updatingStatusId === req.id || pendingReject?.id === req.id || pendingApprove?.id === req.id}
                               onChange={(e) => handleStatusChange(req.id, e.target.value as ReviewStatus)}
                               className={`rounded border px-2 py-1 text-[11px] font-bold uppercase tracking-wide cursor-pointer appearance-none pr-6 transition-colors disabled:opacity-50 ${REVIEW_STATUS_STYLES[reviewStatus]}`}
                             >
