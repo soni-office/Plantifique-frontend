@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TikTokStatusProvider, useTikTokStatus } from '../../context/tikTokStatus';
 import { useAuthStore } from '../../store/authStore';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 /** Shown on data routes when the org has no active TikTok Shop token. */
 function NoShopAccess() {
@@ -42,7 +43,9 @@ function DashboardContent() {
     <div className="flex min-h-screen">
       <Sidebar />
       <main className="flex-1 p-6 md:p-8">
-        {showGate ? <NoShopAccess /> : <Outlet />}
+        <ErrorBoundary>
+          {showGate ? <NoShopAccess /> : <Outlet />}
+        </ErrorBoundary>
       </main>
     </div>
   );

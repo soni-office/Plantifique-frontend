@@ -25,8 +25,18 @@ export const sampleRequestsApi = {
     return data.data;
   },
 
-  async updateReviewStatus(sampleId: string, status: string): Promise<void> {
-    await apiClient.patch(`/tiktok/samples/${sampleId}/review-status`, { status });
+  async updateReviewStatus(
+    sampleId: string,
+    status: string,
+    reviewResult: "APPROVE" | "REJECT",
+    rejectReason?: string,
+  ): Promise<{ status: string; tiktok_synced?: boolean; warning?: string }> {
+    const { data } = await apiClient.patch(`/tiktok/samples/${sampleId}/review-status`, {
+      status,
+      review_result: reviewResult,
+      reject_reason: rejectReason ?? null,
+    });
+    return data;
   },
 
   async submitFeedback(sampleId: string, rating: "up" | "down", comment = ""): Promise<void> {

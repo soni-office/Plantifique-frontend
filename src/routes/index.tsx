@@ -8,6 +8,7 @@ import { SampleRequestsPage } from '../pages/dashboard/SampleRequestsPage';
 import { TierConfigPage } from '../pages/dashboard/TierConfigPage';
 import { CreatorDetailsPage } from '../pages/dashboard/CreatorDetailsPage';
 import { ProductDetailsPage } from '../pages/dashboard/ProductDetailsPage';
+import { TestingPage } from '../pages/dashboard/TestingPage';
 
 // import { AgentsPage } from '../pages/dashboard/AgentsPage';
 
@@ -24,6 +25,7 @@ export function AppRouter() {
           <Route path="tier-config" element={<TierConfigPage />} />
           <Route path="creators/:creatorOpenId" element={<CreatorDetailsPage />} />
           <Route path="products/:productId" element={<ProductDetailsPage />} />
+          <Route path="testing" element={<TestingPage />} />
           {/* <Route path="agents" element={<AgentsPage />} /> */}
         </Route>
       </Route>

@@ -4,7 +4,7 @@ export const creatorsApi = {
   // NEW METHOD: Call backend using the verified creator_open_id
   async getCreatorByOpenId(creatorOpenId: string) {
     const { data } = await apiClient.get(
-      `/tiktok/creators/creators/${creatorOpenId}`
+      `/tiktok/creators/${creatorOpenId}`
     );
 
     const candidate =
@@ -28,7 +28,7 @@ export const creatorsApi = {
   // OLD METHOD: Kept just in case anything else still needs it
   async getCreatorByUsername(username: string) {
     const { data } = await apiClient.get(
-      "/tiktok/creators/creators",
+      "/tiktok/creators",
       { params: { keyword: username } }
     );
 

@@ -74,7 +74,7 @@ function CreatorRow({
   removing: boolean;
 }) {
   return (
-    <li className="flex items-center justify-between py-2.5 text-sm border-b border-slate-100 last:border-0">
+    <li className="flex items-center justify-between px-3 py-2.5 text-sm">
       <div className="flex items-center gap-3">
         {creator.avatar_url ? (
           <img
@@ -140,7 +140,7 @@ function ProductCard({
   return (
     <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center gap-4 p-4">
+      <div className="flex items-start gap-4 p-4 overflow-hidden">
         {product.sku_image_url && (
           <img
             src={product.sku_image_url}
@@ -149,8 +149,8 @@ function ProductCard({
           />
         )}
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-slate-800 truncate">{product.title}</p>
-          <p className="font-mono text-[10px] text-slate-400 mt-0.5">{product.id}</p>
+          <p className="font-semibold text-slate-800 break-words leading-snug">{product.title}</p>
+          <p className="font-mono text-[10px] text-slate-400 mt-0.5 break-all">{product.id}</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase ${TIER_COLORS[product.tier] ?? ""}`}>
               {product.tier}
@@ -581,7 +581,7 @@ export function TierConfigPage() {
         ) : creators.length === 0 ? (
           <p className="text-sm text-slate-400">No creators on exception lists yet.</p>
         ) : (
-          <ul>
+          <ul className="max-h-96 overflow-y-auto divide-y divide-slate-100 rounded-lg border border-slate-100">
             {creators.map((c) => (
               <CreatorRow
                 key={c.id}
@@ -613,7 +613,7 @@ export function TierConfigPage() {
           </button>
         </div>
 
-        <div className="mt-5 space-y-3">
+        <div className="mt-5">
           {productsLoading ? (
             <p className="text-sm text-slate-400">Loading…</p>
           ) : products.length === 0 ? (
@@ -621,16 +621,18 @@ export function TierConfigPage() {
               No products configured yet. Click "Add product" to pick from your shop.
             </p>
           ) : (
-            products.map((p) => (
-              <ProductCard
-                key={p.id}
-                product={p}
-                onRemove={() => handleRemoveProduct(p.id)}
-                onSaveThresholds={(t) => handleSaveThresholds(p.id, t)}
-                removing={removingProduct === p.id}
-                saving={savingThresholds === p.id}
-              />
-            ))
+            <div className="max-h-[480px] overflow-y-auto space-y-3 pr-1">
+              {products.map((p) => (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  onRemove={() => handleRemoveProduct(p.id)}
+                  onSaveThresholds={(t) => handleSaveThresholds(p.id, t)}
+                  removing={removingProduct === p.id}
+                  saving={savingThresholds === p.id}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
