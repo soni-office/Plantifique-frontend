@@ -31,7 +31,7 @@ export interface SampleApplication {
   filters_passed?: boolean;
   validation_reason?: string;
   tier?: string;
-  rich_creator_detail?: Record<string, any>;
+  creator_metrics?: Record<string, any>;
   rich_product_detail?: Record<string, any>;
 
   creator: {

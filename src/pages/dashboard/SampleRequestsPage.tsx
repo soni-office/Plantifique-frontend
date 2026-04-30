@@ -356,6 +356,28 @@ export function SampleRequestsPage() {
                       const fb = feedbacks[req.id];
                       const tiktokStatus = req.tiktok_status ?? req.status;
 
+                      const detail = analysis?.creator_metrics;
+                      let gmvDisplay = "";
+                      let postRateDisplay = "";
+                      
+                      if (analysis?.analysis_status === "COMPLETED") {
+                        gmvDisplay = "Hidden";
+                        postRateDisplay = "Hidden";
+                        
+                        if (detail) {
+                          const gmvAmount = detail.gmv?.amount;
+                          if (gmvAmount) {
+                            gmvDisplay = "$" + Number(gmvAmount).toLocaleString(undefined, { maximumFractionDigits: 0 });
+                          } else if (detail.gmv_range?.formatted_range) {
+                            gmvDisplay = detail.gmv_range.formatted_range;
+                          }
+                          
+                          if (detail.post_rate != null) {
+                            postRateDisplay = (Number(detail.post_rate) / 100).toFixed(1) + "%";
+                          }
+                        }
+                      }
+
                       const isFirstInGroup = ri === 0;
                       const isLastInGroup = ri === group.rows.length - 1;
 
@@ -413,6 +435,20 @@ export function SampleRequestsPage() {
                                 {req.creator.follower_count > 0 && (
                                   <div className="text-[11px] text-slate-400">
                                     {req.creator.follower_count.toLocaleString()} followers
+                                  </div>
+                                )}
+                                {(gmvDisplay || postRateDisplay) && (
+                                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                    {gmvDisplay && (
+                                      <span className="inline-flex items-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                                        GMV {gmvDisplay}
+                                      </span>
+                                    )}
+                                    {postRateDisplay && (
+                                      <span className="inline-flex items-center rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                                        Post Rate {postRateDisplay}
+                                      </span>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -712,7 +748,7 @@ function DecisionBadge({ decision }: { decision: string }) {
 }
 
 function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; onClose: () => void }) {
-  const detail = analysis.rich_creator_detail as any;
+  const detail = analysis.creator_metrics as any;
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -851,11 +887,11 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
             )}
 
             {/* Top Categories */}
-            {analysis.rich_creator_detail?.top_categories && analysis.rich_creator_detail.top_categories.length > 0 && (
+            {analysis.creator_metrics?.top_categories && analysis.creator_metrics.top_categories.length > 0 && (
               <div className="bg-white border border-slate-100 rounded-xl p-5 shadow-sm">
                 <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Top GMV Categories</h4>
                 <div className="grid grid-cols-1 gap-3">
-                  {analysis.rich_creator_detail.top_categories.slice(0, 3).map((cat: any) => (
+                  {analysis.creator_metrics.top_categories.slice(0, 3).map((cat: any) => (
                     <div key={cat.key} className="space-y-1">
                       <div className="flex justify-between text-[10px] font-bold text-slate-700 uppercase">
                         <span>{cat.key}</span>

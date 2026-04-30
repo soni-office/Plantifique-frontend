@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { creatorsApi } from "../../api/creatorsApi";
+import { metadataApi } from "../../api/metadataApi";
 
 
 interface Creator {
@@ -65,6 +66,14 @@ export function CreatorDetailsPage() {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+
+  // Fetch metric descriptions from backend once on mount
+  useEffect(() => {
+    metadataApi.getMetricDescriptions()
+      .then((res) => setDescriptions(res.creator))
+      .catch(() => {}); // fail silently — hardcoded fallback strings will show nothing
+  }, []);
 
   useEffect(() => {
     if (creator) return;
@@ -121,10 +130,8 @@ export function CreatorDetailsPage() {
       : null;
 
   const gmvAmount = creator.gmv?.amount
-    ? parseFloat(creator.gmv.amount) >= 1000
-      ? `$${(parseFloat(creator.gmv.amount) / 1000).toFixed(0)}K`
-      : `$${parseFloat(creator.gmv.amount).toFixed(0)}`
-    : creator.gmv_range?.formatted_range || "N/A";
+    ? `$${parseFloat(creator.gmv.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+    : creator.gmv_range?.formatted_range || "Not public";
 
   return (
     <section className="p-6">
@@ -184,19 +191,19 @@ export function CreatorDetailsPage() {
 
         {/* ── Core Metrics ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard label="Followers" value={creator.follower_count.toLocaleString()} subValue="Total" icon="👥" />
-          <MetricCard label="Est. GMV" value={gmvAmount} subValue="Sales Volume" icon="💰" />
+          <MetricCard label="Followers" value={creator.follower_count.toLocaleString()} icon="👥" description={descriptions.followers} />
+          <MetricCard label="Est. GMV" value={gmvAmount} icon="💰" description={descriptions.est_gmv} />
           <MetricCard
             label="Units Sold"
             value={creator.units_sold != null ? creator.units_sold.toLocaleString() : (creator.units_sold_range?.formatted_range || "0")}
-            subValue="Total Sales"
             icon="📦"
+            description={descriptions.units_sold}
           />
           <MetricCard
             label="Products Promoted"
             value={creator.promoted_product_num != null ? creator.promoted_product_num.toLocaleString() : "—"}
-            subValue="Lifetime"
             icon="🛍️"
+            description={descriptions.products_promoted}
           />
         </div>
 
@@ -205,28 +212,30 @@ export function CreatorDetailsPage() {
           <MetricCard
             label="Avg GMV / Buyer"
             value={creator.avg_gmv_per_buyer?.amount
-              ? `$${parseFloat(creator.avg_gmv_per_buyer.amount).toFixed(2)}`
+              ? `$${parseFloat(creator.avg_gmv_per_buyer.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
               : (creator.avg_gmv_per_buyer_range?.formatted_range || "—")}
-            subValue="Revenue per Buyer"
             icon="🧾"
+            description={descriptions.avg_gmv_per_buyer}
           />
           <MetricCard
             label="GPM"
-            value={creator.gpm?.amount ? `$${parseFloat(creator.gpm.amount).toFixed(2)}` : "—"}
-            subValue="Gross Profit / Mille"
+            value={creator.gpm?.amount 
+              ? `$${parseFloat(creator.gpm.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+              : (creator.video_gpm_range?.formatted_range || "—")}
             icon="📈"
+            description={descriptions.gpm}
           />
           <MetricCard
             label="Brand Collabs"
             value={creator.brand_collaboration_count != null ? creator.brand_collaboration_count.toLocaleString() : "—"}
-            subValue="Collaborations"
             icon="🤝"
+            description={descriptions.brand_collabs}
           />
           <MetricCard
             label="Post Rate"
             value={creator.post_rate != null ? `${(Number(creator.post_rate) / 100).toFixed(2)}%` : "—"}
-            subValue="Posts (period)"
             icon="📝"
+            description={descriptions.post_rate}
           />
         </div>
 
@@ -392,16 +401,37 @@ export function CreatorDetailsPage() {
   );
 }
 
-function MetricCard({ label, value, subValue, icon }: { label: string; value: string; subValue?: string; icon?: string }) {
+function MetricCard({ label, value, subValue, icon, description }: {
+  label: string;
+  value: string;
+  subValue?: string;
+  icon?: string;
+  description?: string;
+}) {
   return (
     <div className="bg-white border border-slate-100 p-5 rounded-xl shadow-sm hover:shadow-md transition-shadow">
       <div className="flex justify-between items-start">
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="text-slate-500 text-[10px] uppercase font-bold tracking-widest">{label}</p>
           <p className="mt-1 text-xl font-black text-slate-900">{value}</p>
-          {subValue && <p className="text-[10px] text-slate-400 mt-1 font-medium italic">{subValue}</p>}
+          {description ? (
+            <div className="relative group mt-1">
+              {/* Truncated preview */}
+              <p className="text-xs text-slate-400 font-medium truncate max-w-[130px]">
+                {description}
+              </p>
+              {/* Full tooltip on hover */}
+              <div className="absolute bottom-full left-0 mb-2 w-60 bg-slate-800 text-white text-[11px] leading-relaxed rounded-lg px-3 py-2.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 shadow-2xl">
+                {description}
+                {/* Arrow */}
+                <div className="absolute top-full left-4 border-[5px] border-transparent border-t-slate-800" />
+              </div>
+            </div>
+          ) : subValue ? (
+            <p className="text-[10px] text-slate-400 mt-1 font-medium italic">{subValue}</p>
+          ) : null}
         </div>
-        {icon && <span className="text-xl">{icon}</span>}
+        {icon && <span className="text-xl shrink-0 ml-2">{icon}</span>}
       </div>
     </div>
   );
