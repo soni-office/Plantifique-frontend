@@ -6,10 +6,15 @@ export const sampleRequestsApi = {
   async getSampleRequests(
     pageSize = 30,
     cursor?: string | null,
+    filterField?: string,
+    filterValue?: string,
   ): Promise<SampleListResponse> {
     const params: Record<string, unknown> = { page_size: pageSize };
     if (cursor) params.cursor = cursor;
-
+    if (filterField && filterValue) {
+      params.filter_field = filterField;
+      params.filter_value = filterValue;
+    }
     const { data } = await apiClient.get<SampleListResponse>("/tiktok/samples", { params });
     return data;
   },

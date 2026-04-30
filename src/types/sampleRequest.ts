@@ -11,6 +11,8 @@ export interface SampleApplication {
   // DB-side analysis fields (present when served from Firestore)
   analysis_status?: string;     // NOT_STARTED | QUEUED | COMPLETED | FAILED
   review_status?: string;       // PENDING_REVIEW | APPROVED | REJECTED
+  feedback_rating?: "up" | "down" | null;
+  feedback_comment?: string;
   // will be removing this soon
   analysis_score?: number;
   analysis_reasoning?: string;

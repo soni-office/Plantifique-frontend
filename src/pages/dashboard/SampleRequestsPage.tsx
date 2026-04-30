@@ -8,6 +8,36 @@ import { Link, useSearchParams } from "react-router-dom";
 const PAGE_SIZE = 30;
 
 const REVIEW_STATUSES = ["PENDING_REVIEW", "APPROVED", "REJECTED"] as const;
+
+type FilterField = "review_status" | "analysis_status" | "tiktok_status" | "creator_username" | "sample_id";
+
+const FILTER_DEFS: Record<FilterField, {
+  label: string;
+  icon: string;
+  activeClass: string;
+  valueOptions?: readonly string[];
+}> = {
+  review_status:    { label: "Review",    icon: "◉", activeClass: "bg-violet-50 border-violet-300 text-violet-700", valueOptions: ["PENDING_REVIEW", "APPROVED", "REJECTED"] },
+  analysis_status:  { label: "Analysis", icon: "⚡", activeClass: "bg-amber-50 border-amber-300 text-amber-700",   valueOptions: ["NOT_STARTED", "QUEUED", "COMPLETED", "FAILED", "PERMANENTLY_FAILED"] },
+  tiktok_status:    { label: "TikTok",   icon: "◈", activeClass: "bg-sky-50 border-sky-300 text-sky-700",         valueOptions: ["PENDING", "PROCESSED_ON_SHOP"] },
+  creator_username: { label: "Creator",  icon: "@",  activeClass: "bg-emerald-50 border-emerald-300 text-emerald-700" },
+  sample_id:        { label: "ID",       icon: "#",  activeClass: "bg-blue-50 border-blue-300 text-blue-700" },
+};
+
+const FILTER_FIELDS = Object.keys(FILTER_DEFS) as FilterField[];
+
+const VALUE_STYLES: Record<string, string> = {
+  PENDING_REVIEW:     "bg-slate-100 text-slate-600 border-slate-300",
+  APPROVED:           "bg-emerald-100 text-emerald-700 border-emerald-300",
+  REJECTED:           "bg-rose-100 text-rose-700 border-rose-300",
+  NOT_STARTED:        "bg-slate-100 text-slate-500 border-slate-300",
+  QUEUED:             "bg-amber-100 text-amber-700 border-amber-300",
+  COMPLETED:          "bg-emerald-100 text-emerald-700 border-emerald-300",
+  FAILED:             "bg-rose-100 text-rose-700 border-rose-300",
+  PERMANENTLY_FAILED: "bg-red-100 text-red-700 border-red-300",
+  PENDING:            "bg-amber-100 text-amber-700 border-amber-300",
+  PROCESSED_ON_SHOP:  "bg-slate-100 text-slate-600 border-slate-300",
+};
 type ReviewStatus = (typeof REVIEW_STATUSES)[number];
 
 // Maps our internal status to TikTok's review_result field
@@ -63,6 +93,22 @@ export function SampleRequestsPage() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [feedbacks, setFeedbacks] = useState<Record<string, FeedbackEntry>>({});
 
+  // Restore filter from URL so browser back (creator/product detail → SR) preserves state
+  const _urlFilterField = searchParams.get("filter_field") as FilterField | null;
+  const _urlFilterValue = searchParams.get("filter_value");
+  const _urlActiveFilter = (_urlFilterField && _urlFilterValue)
+    ? { field: _urlFilterField, value: _urlFilterValue }
+    : null;
+
+  // Filter state: activeFilterRef is stable for async closures; activeFilter drives rendering
+  const [activeFilter, setActiveFilter] = useState<{ field: FilterField; value: string } | null>(_urlActiveFilter);
+  const activeFilterRef = useRef<{ field: FilterField; value: string } | null>(_urlActiveFilter);
+  const [filterField, setFilterField] = useState<FilterField | "">(_urlFilterField ?? "");
+  const [filterValue, setFilterValue] = useState<string>(_urlFilterValue ?? "");
+
+  // Set to true before any setSearchParams call so the effect knows to skip (handler already calls loadPage)
+  const internalNavRef = useRef(false);
+
   // Status change state
   const [pendingReject, setPendingReject] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState<RejectReason>("NOT_MATCH");
@@ -71,7 +117,10 @@ export function SampleRequestsPage() {
   const loadPage = async (cursor: string | null, silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const result = await sampleRequestsApi.getSampleRequests(PAGE_SIZE, cursor);
+      const af = activeFilterRef.current;
+      const result = af
+        ? await sampleRequestsApi.getSampleRequests(PAGE_SIZE, cursor, af.field, af.value)
+        : await sampleRequestsApi.getSampleRequests(PAGE_SIZE, cursor);
       setRequests(result.items);
       setHasMore(result.has_more);
 
@@ -98,13 +147,17 @@ export function SampleRequestsPage() {
       }
       setReviewStatuses((prev) => ({ ...prev, ...statuses }));
       setAnalysisResults((prev) => ({ ...prev, ...analyses }));
-      // Init feedback state for pre-populated analyses so the feedback UI renders
+      // Init feedback state for pre-populated analyses; restore submitted state from DB
       setFeedbacks((prev) => {
         const next = { ...prev };
-        for (const id of Object.keys(analyses)) {
-          if (!next[id]) {
-            next[id] = { rating: null, comment: "", submitted: false, submitting: false };
-          }
+        for (const item of result.items) {
+          if (!analyses[item.id] || next[item.id]) continue;
+          next[item.id] = {
+            rating: item.feedback_rating ?? null,
+            comment: item.feedback_comment ?? "",
+            submitted: item.feedback_rating != null,
+            submitting: false,
+          };
         }
         return next;
       });
@@ -118,11 +171,41 @@ export function SampleRequestsPage() {
     }
   };
 
-  // On initial mount, load the correct cursor for the page in the URL
+  // Handles initial load + browser back/forward.
+  // internalNavRef guards against double-fetching when our own handlers change the URL.
   useEffect(() => {
-    const targetCursor = cursorsRef.current[initialPage] ?? null;
-    void loadPage(targetCursor);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (internalNavRef.current) {
+      internalNavRef.current = false;
+      return; // our handler already called loadPage — skip
+    }
+
+    // External URL change (browser back/forward) or initial mount
+    const urlField = searchParams.get("filter_field") as FilterField | null;
+    const urlValue = searchParams.get("filter_value");
+    const urlCursor = searchParams.get("cursor");
+    const urlPage = Number(searchParams.get("page")) || 0;
+    const urlFilter = (urlField && urlValue) ? { field: urlField, value: urlValue } : null;
+
+    // If the filter context changed (back to a different filter), rebuild cursor stack from URL
+    const filterChanged =
+      activeFilterRef.current?.field !== urlFilter?.field ||
+      activeFilterRef.current?.value !== urlFilter?.value;
+
+    activeFilterRef.current = urlFilter;
+    setActiveFilter(urlFilter);
+    setFilterField(urlField ?? "");
+    setFilterValue(urlValue ?? "");
+    setPageIndex(urlPage);
+
+    if (filterChanged) {
+      const newStack: (string | null)[] =
+        urlPage === 0 ? [null] : [...Array<null>(urlPage).fill(null), urlCursor ?? null];
+      cursorsRef.current = newStack;
+      sessionStorage.setItem("sr_cursor_stack", JSON.stringify(newStack));
+    }
+
+    void loadPage(urlCursor ?? null);
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Background Polling: Silently fetch the list every 10 seconds.
   // Because the backend uses a Redis cache, this costs 0 extra database reads unless the state actually changes.
@@ -133,12 +216,19 @@ export function SampleRequestsPage() {
     return () => clearInterval(interval);
   }, [pageIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const buildParams = (extra: Record<string, string> = {}): Record<string, string> => {
+    const p: Record<string, string> = { ...extra };
+    if (activeFilter) { p.filter_field = activeFilter.field; p.filter_value = activeFilter.value; }
+    return p;
+  };
+
   const handleNext = () => {
     const nextCursor = cursorsRef.current[pageIndex + 1];
     if (!nextCursor) return;
     const newPage = pageIndex + 1;
     setPageIndex(newPage);
-    setSearchParams({ page: newPage.toString(), cursor: nextCursor });
+    internalNavRef.current = true;
+    setSearchParams(buildParams({ page: newPage.toString(), cursor: nextCursor }));
     void loadPage(nextCursor);
   };
 
@@ -147,10 +237,11 @@ export function SampleRequestsPage() {
     const newPage = pageIndex - 1;
     const prevCursor = cursorsRef.current[newPage];
     setPageIndex(newPage);
+    internalNavRef.current = true;
     if (newPage === 0) {
-      setSearchParams({});
+      setSearchParams(buildParams());
     } else {
-      setSearchParams({ page: newPage.toString(), cursor: prevCursor || "" });
+      setSearchParams(buildParams({ page: newPage.toString(), cursor: prevCursor || "" }));
     }
     void loadPage(prevCursor ?? null);
   };
@@ -168,6 +259,7 @@ export function SampleRequestsPage() {
       cursorsRef.current = [null];
       sessionStorage.removeItem("sr_cursor_stack");
       setPageIndex(0);
+      internalNavRef.current = true;
       setSearchParams({});
       void loadPage(null);
     } catch {
@@ -288,6 +380,36 @@ export function SampleRequestsPage() {
     }
   };
 
+  const applyFilter = (field: FilterField, value: string) => {
+    const af = { field, value };
+    activeFilterRef.current = af;
+    setActiveFilter(af);
+    cursorsRef.current = [null];
+    sessionStorage.removeItem("sr_cursor_stack");
+    setPageIndex(0);
+    internalNavRef.current = true;
+    setSearchParams({ filter_field: field, filter_value: value });
+    void loadPage(null);
+  };
+
+  const clearFilter = () => {
+    activeFilterRef.current = null;
+    setActiveFilter(null);
+    setFilterField("");
+    setFilterValue("");
+    cursorsRef.current = [null];
+    sessionStorage.removeItem("sr_cursor_stack");
+    setPageIndex(0);
+    internalNavRef.current = true;
+    setSearchParams({});
+    void loadPage(null);
+  };
+
+  const handleFilterFieldChange = (field: FilterField | "") => {
+    setFilterField(field);
+    setFilterValue("");
+  };
+
   return (
     <section>
       {/* ── Header ── */}
@@ -312,6 +434,117 @@ export function SampleRequestsPage() {
               </span>
             )}
           </h3>
+        </div>
+
+        {/* ── Filter bar ── */}
+        <div className="mb-4 flex flex-col gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+          {/* Row 1: field pills */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mr-0.5 shrink-0">Filter</span>
+            {FILTER_FIELDS.map((field) => {
+              const def = FILTER_DEFS[field];
+              const isChosen = filterField === field;
+              const isApplied = activeFilter?.field === field;
+              return (
+                <button
+                  key={field}
+                  onClick={() => handleFilterFieldChange(isChosen ? "" : field)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                    isChosen
+                      ? def.activeClass + " shadow-sm"
+                      : isApplied
+                        ? def.activeClass + " opacity-60"
+                        : "bg-white border-slate-200 text-slate-500 hover:bg-white hover:border-slate-300 hover:text-slate-700"
+                  }`}
+                >
+                  <span className="font-bold">{def.icon}</span>
+                  {def.label}
+                  {isApplied && !isChosen && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  )}
+                </button>
+              );
+            })}
+            {activeFilter && (
+              <button
+                onClick={clearFilter}
+                className="ml-auto inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-400 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 transition-all"
+              >
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Row 2: value selection */}
+          {filterField && (() => {
+            const def = FILTER_DEFS[filterField];
+            if (def.valueOptions) {
+              return (
+                <div className="flex items-center gap-1.5 flex-wrap pl-11">
+                  {def.valueOptions.map((val) => {
+                    const isActive = activeFilter?.field === filterField && activeFilter.value === val;
+                    const colorClass = VALUE_STYLES[val] ?? "bg-slate-100 text-slate-600 border-slate-200";
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => { setFilterValue(val); applyFilter(filterField, val); }}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
+                          isActive
+                            ? colorClass + " ring-2 ring-current ring-offset-1"
+                            : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        }`}
+                      >
+                        {val.replace(/_/g, " ")}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
+            return (
+              <div className="flex items-center gap-2 pl-11">
+                <div className="relative">
+                  <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    value={filterValue}
+                    onChange={(e) => setFilterValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && filterValue.trim()) applyFilter(filterField, filterValue.trim()); }}
+                    placeholder={`Search by ${def.label.toLowerCase()}…`}
+                    className="rounded-lg border border-slate-200 bg-white pl-8 pr-3 py-1.5 text-xs text-slate-700 w-56 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                  />
+                </div>
+                <button
+                  onClick={() => { if (filterValue.trim()) applyFilter(filterField, filterValue.trim()); }}
+                  disabled={!filterValue.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-slate-700 disabled:opacity-40 transition-all shadow-sm"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z" />
+                  </svg>
+                  Search
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Active filter chip — shown when active filter is for a field not currently expanded */}
+          {activeFilter && activeFilter.field !== filterField && (
+            <div className="flex items-center gap-1.5 pl-11">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active:</span>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+                VALUE_STYLES[activeFilter.value] ?? FILTER_DEFS[activeFilter.field].activeClass
+              }`}>
+                <span className="font-bold">{FILTER_DEFS[activeFilter.field].icon}</span>
+                {FILTER_DEFS[activeFilter.field].label}: {activeFilter.value.replace(/_/g, " ")}
+              </span>
+            </div>
+          )}
         </div>
 
         {isLoading ? (
