@@ -18,9 +18,9 @@ const STATUS_TO_TIKTOK: Record<string, "APPROVE" | "REJECT"> = {
 
 const REJECT_REASONS = [
   { value: "NOT_MATCH", label: "Does not meet collaboration requirements" },
-  { value: "OFFLINE",    label: "Product has been taken offline" },
+  { value: "OFFLINE", label: "Product has been taken offline" },
   { value: "OUT_OF_STOCK", label: "Product is temporarily out of stock" },
-  { value: "OTHER",     label: "Other reason" },
+  { value: "OTHER", label: "Other reason" },
 ] as const;
 type RejectReason = (typeof REJECT_REASONS)[number]["value"];
 
@@ -45,7 +45,7 @@ export function SampleRequestsPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialPage = Number(searchParams.get("page")) || 0;
-  
+
   // Cursor stack: index 0 = first page (no cursor), each next push = next cursor
   // We hydrate from sessionStorage so the stack naturally survives navigating to Profile -> Back
   const cursorsRef = useRef<(string | null)[]>(
@@ -66,11 +66,10 @@ export function SampleRequestsPage() {
   // Status change state
   const [pendingReject, setPendingReject] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState<RejectReason>("NOT_MATCH");
-  const [customRejectReason, setCustomRejectReason] = useState("");
   const [pendingApprove, setPendingApprove] = useState<{ id: string; currentStatus: ReviewStatus } | null>(null);
 
-  const loadPage = async (cursor: string | null) => {
-    setIsLoading(true);
+  const loadPage = async (cursor: string | null, silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const result = await sampleRequestsApi.getSampleRequests(PAGE_SIZE, cursor);
       setRequests(result.items);
@@ -115,16 +114,24 @@ export function SampleRequestsPage() {
         : "Please try again.";
       toast({ title: "Failed to load sample requests", description: String(msg), variant: "error" });
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   // On initial mount, load the correct cursor for the page in the URL
   useEffect(() => {
-    // If we're on page N, try to load its cursor from our restored stack
     const targetCursor = cursorsRef.current[initialPage] ?? null;
     void loadPage(targetCursor);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background Polling: Silently fetch the list every 10 seconds.
+  // Because the backend uses a Redis cache, this costs 0 extra database reads unless the state actually changes.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void loadPage(cursorsRef.current[pageIndex] ?? null, true);
+    }, 10000); // Every 10 seconds
+    return () => clearInterval(interval);
+  }, [pageIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNext = () => {
     const nextCursor = cursorsRef.current[pageIndex + 1];
@@ -174,6 +181,17 @@ export function SampleRequestsPage() {
     setAnalyzingId(id);
     try {
       const result = await sampleRequestsApi.analyzeSample(id);
+      // Handle "skipped" response — SR is already QUEUED by the scheduler
+      if (result && (result as { status?: string }).status === "skipped") {
+        toast({
+          title: "Already in progress",
+          description: "This creator is already being processed by the scheduler. Please refresh in a few minutes to see the result.",
+          variant: "error",
+        });
+        // Refresh the list so the QUEUED badge shows immediately, do it silently
+        void loadPage(cursorsRef.current[pageIndex] ?? null, true);
+        return;
+      }
       if (result) {
         setAnalysisResults((prev) => ({ ...prev, [id]: result }));
         if (!feedbacks[id]) {
@@ -199,7 +217,6 @@ export function SampleRequestsPage() {
     // REJECTED requires a reason — show the modal first
     if (newStatus === "REJECTED") {
       setSelectedRejectReason("NOT_MATCH");
-      setCustomRejectReason("");
       setPendingReject({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
       // Optimistically update the dropdown to show REJECTED, but revert if user cancels
       setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
@@ -207,9 +224,9 @@ export function SampleRequestsPage() {
     }
     // APPROVED — ask for confirmation
     if (newStatus === "APPROVED") {
-       setPendingApprove({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
-       setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
-       return;
+      setPendingApprove({ id, currentStatus: reviewStatuses[id] ?? "PENDING_REVIEW" });
+      setReviewStatuses((prev) => ({ ...prev, [id]: newStatus }));
+      return;
     }
   };
 
@@ -239,9 +256,9 @@ export function SampleRequestsPage() {
       }
     } catch {
       // Revert optimism if API fails
-      setReviewStatuses((prev) => ({ 
-        ...prev, 
-        [id]: pendingReject?.currentStatus || pendingApprove?.currentStatus || "PENDING_REVIEW" 
+      setReviewStatuses((prev) => ({
+        ...prev,
+        [id]: pendingReject?.currentStatus || pendingApprove?.currentStatus || "PENDING_REVIEW"
       }));
       toast({ title: "Failed to update status", variant: "error" });
     } finally {
@@ -419,23 +436,37 @@ export function SampleRequestsPage() {
                           <td className="py-3 pr-4 min-w-[220px]">
                             {!analysis ? (
                               <div className="flex flex-col gap-1">
-                                {req.analysis_status === "COMPLETED" && (
-                                  <span className="text-[11px] text-emerald-600 font-semibold">Already analysed</span>
+                                {req.analysis_status === "QUEUED" ? (
+                                  <div className="flex flex-col gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                      <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Queued</span>
+                                    </div>
+                                    <p className="text-[10px] text-amber-600 leading-snug">
+                                      Processing now. Please wait...
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <>
+                                    {req.analysis_status === "COMPLETED" && (
+                                      <span className="text-[11px] text-emerald-600 font-semibold">Already analysed</span>
+                                    )}
+                                    <button
+                                      onClick={() => handleAnalyze(req.id)}
+                                      disabled={analyzingId !== null}
+                                      className="rounded bg-black px-4 py-1.5 text-white text-xs font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 w-fit"
+                                    >
+                                      {analyzingId === req.id ? "Analyzing…" : "Analyze"}
+                                    </button>
+                                  </>
                                 )}
-                                <button
-                                  onClick={() => handleAnalyze(req.id)}
-                                  disabled={analyzingId === req.id}
-                                  className="rounded bg-black px-4 py-1.5 text-white text-xs font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50 w-fit"
-                                >
-                                  {analyzingId === req.id ? "Analyzing…" : "Analyze"}
-                                </button>
                               </div>
                             ) : (
                               <div className="flex flex-col gap-2 py-1">
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <DecisionBadge decision={analysis.final_decision ?? ""} />
 
-                                   {analysis.tier && (
+                                  {analysis.tier && (
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
                                       {analysis.tier}
                                     </span>
@@ -463,11 +494,11 @@ export function SampleRequestsPage() {
                                     <span>Filters:</span>
                                     <span className={
                                       analysis.filters_passed === true ? "text-emerald-600" :
-                                      analysis.filters_passed === false ? "text-rose-600" :
-                                      "text-slate-400"
+                                        analysis.filters_passed === false ? "text-rose-600" :
+                                          "text-slate-400"
                                     }>
                                       {analysis.filters_passed === true ? "PASSED" :
-                                       analysis.filters_passed === false ? "FAILED" : "N/A"}
+                                        analysis.filters_passed === false ? "FAILED" : "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between pt-0.5">
@@ -498,11 +529,10 @@ export function SampleRequestsPage() {
                                           <button
                                             key={r}
                                             onClick={() => handleFeedbackRating(req.id, r)}
-                                            className={`px-2 py-1 rounded text-sm border transition-colors ${
-                                              fb.rating === r
-                                                ? r === "up" ? "bg-emerald-100 border-emerald-300" : "bg-rose-100 border-rose-300"
-                                                : "bg-white border-slate-200 hover:bg-slate-50"
-                                            }`}
+                                            className={`px-2 py-1 rounded text-sm border transition-colors ${fb.rating === r
+                                              ? r === "up" ? "bg-emerald-100 border-emerald-300" : "bg-rose-100 border-rose-300"
+                                              : "bg-white border-slate-200 hover:bg-slate-50"
+                                              }`}
                                           >
                                             {r === "up" ? "👍" : "👎"}
                                           </button>
@@ -578,37 +608,23 @@ export function SampleRequestsPage() {
             </p>
             <div className="flex flex-col gap-2 mb-6">
               {REJECT_REASONS.map((r) => (
-                <div key={r.value}>
-                  <label
-                    className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
-                      selectedRejectReason === r.value
-                        ? "border-rose-400 bg-rose-50"
-                        : "border-slate-200 hover:bg-slate-50"
+                <label
+                  key={r.value}
+                  className={`flex items-center gap-3 rounded-lg border px-4 py-3 cursor-pointer transition-colors ${selectedRejectReason === r.value
+                    ? "border-rose-400 bg-rose-50"
+                    : "border-slate-200 hover:bg-slate-50"
                     }`}
-                  >
-                    <input
-                      type="radio"
-                      name="reject_reason"
-                      value={r.value}
-                      checked={selectedRejectReason === r.value}
-                      onChange={() => setSelectedRejectReason(r.value)}
-                      className="accent-rose-500"
-                    />
-                    <span className="text-sm text-slate-700">{r.label}</span>
-                  </label>
-                  {selectedRejectReason === "OTHER" && r.value === "OTHER" && (
-                    <div className="mt-2 pl-8">
-                      <input
-                        type="text"
-                        placeholder="Type custom reason here..."
-                        value={customRejectReason}
-                        onChange={(e) => setCustomRejectReason(e.target.value)}
-                        autoFocus
-                        className="w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
-                      />
-                    </div>
-                  )}
-                </div>
+                >
+                  <input
+                    type="radio"
+                    name="reject_reason"
+                    value={r.value}
+                    checked={selectedRejectReason === r.value}
+                    onChange={() => setSelectedRejectReason(r.value)}
+                    className="accent-rose-500"
+                  />
+                  <span className="text-sm text-slate-700">{r.label}</span>
+                </label>
               ))}
             </div>
             <div className="flex gap-3">
@@ -624,11 +640,8 @@ export function SampleRequestsPage() {
                 Cancel
               </button>
               <button
-                disabled={updatingStatusId === pendingReject.id || (selectedRejectReason === "OTHER" && !customRejectReason.trim())}
-                onClick={() => {
-                  const finalReason = selectedRejectReason === "OTHER" ? customRejectReason.trim() : selectedRejectReason;
-                  void confirmStatusChange(pendingReject.id, "REJECTED", finalReason);
-                }}
+                disabled={updatingStatusId === pendingReject.id}
+                onClick={() => void confirmStatusChange(pendingReject.id, "REJECTED", selectedRejectReason)}
                 className="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-bold text-white hover:bg-rose-700 transition-colors disabled:opacity-50"
               >
                 {updatingStatusId === pendingReject.id ? "Rejecting…" : "Confirm Reject"}
@@ -642,16 +655,16 @@ export function SampleRequestsPage() {
       {pendingApprove && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center transform shadow-emerald-900/10 border-t-4 border-emerald-500">
-             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 mb-4">
-                <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                 </svg>
-             </div>
+            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-emerald-100 mb-4">
+              <svg className="h-6 w-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">Approve Request?</h3>
             <p className="text-sm text-slate-500 mb-6">
               This will approve the sample request and sync the action to TikTok Shop.
             </p>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => {
@@ -729,12 +742,11 @@ function ReasoningModal({ analysis, onClose }: { analysis: SampleApplication; on
         {/* ── Scrollable content ── */}
         <div className="overflow-y-auto flex-1 px-8 py-6">
           <div className="space-y-4">
-            <div className={`p-4 rounded-xl border ${
-              analysis.final_decision === "ACCEPT" ? "bg-emerald-50 border-emerald-100" :
+            <div className={`p-4 rounded-xl border ${analysis.final_decision === "ACCEPT" ? "bg-emerald-50 border-emerald-100" :
               analysis.final_decision === "POTENTIAL_ACCEPT" ? "bg-amber-50 border-amber-100" :
-              analysis.final_decision === "FLAG_INTERNAL" ? "bg-violet-50 border-violet-100" :
-              "bg-rose-50 border-rose-100"
-            }`}>
+                analysis.final_decision === "FLAG_INTERNAL" ? "bg-violet-50 border-violet-100" :
+                  "bg-rose-50 border-rose-100"
+              }`}>
               <div className="flex justify-between items-start mb-2 flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <DecisionBadge decision={analysis.final_decision ?? ""} />

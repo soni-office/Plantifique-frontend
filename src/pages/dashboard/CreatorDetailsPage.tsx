@@ -224,7 +224,7 @@ export function CreatorDetailsPage() {
           />
           <MetricCard
             label="Post Rate"
-            value={creator.post_rate != null ? creator.post_rate : "—"}
+            value={creator.post_rate != null ? `${(Number(creator.post_rate) / 100).toFixed(2)}%` : "—"}
             subValue="Posts (period)"
             icon="📝"
           />
