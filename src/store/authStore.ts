@@ -9,6 +9,15 @@ import { firebaseAuth } from '../lib/firebase';
 import { authApi } from '../api/auth';
 import type { User } from '../types/auth';
 
+/**
+ * Holds an error message to surface on the login page after a forced sign-out.
+ * Module-level so it survives Zustand state resets triggered by the Firebase
+ * null auth event that follows signOut().
+ */
+let _pendingLoginError: string | null = null;
+export const getPendingLoginError = (): string | null => _pendingLoginError;
+export const clearPendingLoginError = (): void => { _pendingLoginError = null; };
+
 interface AuthState {
   user: User | null;
   firebaseUser: FirebaseUser | null;
@@ -55,19 +64,15 @@ export const useAuthStore = create<AuthState>((set) => ({
           const user = await authApi.getCurrentUser();
           set({ firebaseUser, user, isAuthenticated: true, initialized: true, isLoading: false });
         } catch {
-          // Token valid but /auth/me failed — use minimal data from the Firebase token
-          set({
-            firebaseUser,
-            user: {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email ?? '',
-              role: 'ORG_MEMBER',
-              org_id: '',
-            },
-            isAuthenticated: true,
-            initialized: true,
-            isLoading: false,
-          });
+          // /auth/me failed — the Firebase token exists but the backend rejected or
+          // doesn't recognise this user.  Block dashboard access entirely:
+          // 1. Record the reason so LoginPage can surface it as a toast.
+          // 2. Sign out of Firebase — this triggers a second onAuthStateChanged(null)
+          //    which sets isAuthenticated: false and completes the redirect to /login.
+          _pendingLoginError =
+            'Your session could not be verified. Please sign in again.';
+          await signOut(firebaseAuth);
+          // State will be reset by the onAuthStateChanged(null) event above.
         }
       } else {
         set({

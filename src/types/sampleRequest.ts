@@ -11,6 +11,8 @@ export interface SampleApplication {
   // DB-side analysis fields (present when served from Firestore)
   analysis_status?: string;     // NOT_STARTED | QUEUED | COMPLETED | FAILED
   review_status?: string;       // PENDING_REVIEW | APPROVED | REJECTED
+  feedback_rating?: "up" | "down" | null;
+  feedback_comment?: string;
   // will be removing this soon
   analysis_score?: number;
   analysis_reasoning?: string;
@@ -31,7 +33,7 @@ export interface SampleApplication {
   filters_passed?: boolean;
   validation_reason?: string;
   tier?: string;
-  rich_creator_detail?: Record<string, any>;
+  creator_metrics?: Record<string, any>;
   rich_product_detail?: Record<string, any>;
 
   creator: {

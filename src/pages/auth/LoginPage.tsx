@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
+import { useAuthStore, getPendingLoginError, clearPendingLoginError } from '../../store/authStore';
 import { Button } from '../../components/ui/button';
 import { toast } from '../../hooks/useToast';
 
@@ -11,6 +11,15 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
 
   useEffect(() => { initializeAuth(); }, [initializeAuth]);
+
+  // Show a toast if the user was force-signed-out (e.g. /auth/me failed)
+  useEffect(() => {
+    const err = getPendingLoginError();
+    if (err) {
+      clearPendingLoginError();
+      toast({ title: 'Authentication failed', description: err, variant: 'error' });
+    }
+  }, []);
 
   // Redirect once auth state resolves
   useEffect(() => {
