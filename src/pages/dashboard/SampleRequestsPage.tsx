@@ -652,12 +652,26 @@ export function SampleRequestsPage() {
                               {req.creator.avatar_url ? (
                                 <img
                                   src={req.creator.avatar_url}
-                                  alt={req.creator.nickname}
+                                  alt={req.creator.username}
                                   className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                                  onError={(e) => {
+                                    const img = e.currentTarget;
+                                    img.style.display = 'none';
+                                    const fallback = img.parentElement?.querySelector('.avatar-fallback') as HTMLElement;
+                                    if (fallback) fallback.style.display = 'flex';
+                                  }}
                                 />
-                              ) : (
-                                <div className="h-8 w-8 shrink-0 rounded-full bg-slate-200 ring-1 ring-slate-300" />
-                              )}
+                              ) : null}
+                              <div
+                                className="avatar-fallback h-8 w-8 shrink-0 rounded-full ring-1 ring-slate-200 items-center justify-center text-[11px] font-bold uppercase tracking-wide select-none"
+                                style={{
+                                  display: req.creator.avatar_url ? 'none' : 'flex',
+                                  background: `hsl(${(req.creator.username?.charCodeAt(0) ?? 65) * 137 % 360}, 55%, 88%)`,
+                                  color: `hsl(${(req.creator.username?.charCodeAt(0) ?? 65) * 137 % 360}, 55%, 30%)`,
+                                }}
+                              >
+                                {req.creator.username?.charAt(0).toUpperCase() || '?'}
+                              </div>
                               <div>
                                 <Link
                                   to={`../creators/${req.creator.creator_open_id}`}
